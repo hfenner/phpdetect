@@ -1,0 +1,52 @@
+---
+- name: Register the existing AAP SSH public key for a future lab
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Require a dedicated key name and expected AWS account
+      ansible.builtin.assert:
+        that:
+          - phpdetect_lab_key_name is match('^phpdetect-lab-[a-z0-9-]+$')
+          - phpdetect_expected_aws_account | string is match('^[0-9]{12}$')
+          - phpdetect_lab_region | length > 0
+    - name: Verify the destination account
+      amazon.aws.aws_caller_info:
+      register: key_account
+      no_log: true
+    - ansible.builtin.assert:
+        that: key_account.account == phpdetect_expected_aws_account | string
+    - name: Read the injected public identity
+      ansible.builtin.command: ssh-add -L
+      register: key_agent
+      changed_when: false
+      no_log: true
+    - name: Require exactly one public key
+      ansible.builtin.assert:
+        that:
+          - key_agent.stdout_lines | length == 1
+          - key_agent.stdout is match('^(ssh-rsa|ssh-ed25519) ')
+      no_log: true
+    - name: Inspect any existing dedicated key pair
+      amazon.aws.ec2_key_info:
+        region: '{{ phpdetect_lab_region }}'
+        filters:
+          key-name: '{{ phpdetect_lab_key_name }}'
+        include_public_key: true
+      register: existing_key
+      no_log: true
+    - name: Refuse to overwrite a different public key
+      ansible.builtin.assert:
+        that: (item.public_key | regex_search('^[^ ]+ [^ ]+')) == (key_agent.stdout | regex_search('^[^ ]+ [^ ]+'))
+      loop: '{{ existing_key.keypairs }}'
+      no_log: true
+    - name: Import only the existing public key material
+      amazon.aws.ec2_key:
+        region: '{{ phpdetect_lab_region }}'
+        name: '{{ phpdetect_lab_key_name }}'
+        key_material: '{{ key_agent.stdout | trim }}'
+        force: false
+        state: present
+      no_log: true
+- name: Verify AWS and SSH readiness after registration
+  ansible.builtin.import_playbook: check-lab-access.yml
