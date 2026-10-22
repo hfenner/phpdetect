@@ -2,7 +2,16 @@
 
 This is an unofficial PoC, not Red Hat-provided or certified content. The custom Linux amd64 EE uses public UBI 9, Python 3.12, Ansible Core 2.19 and Ansible Runner. It does not require a Red Hat registry login. Compatibility tests run inside the image; an actual AAP 2.7 installation must still be validated in your environment.
 
+## Verified build
+
+[Build 39846972940](https://github.com/hfenner/phpdetect/actions/runs/39846972940) passed all in-image checks, including the Runner job-artifact test. The [public repository-linked package](https://github.com/hfenner/phpdetect/pkgs/container/phpdetect-ee) is available without registry credentials. `site.example.yml` pins this tested pair:
+
+- Source: `5900a1fbae8345983c922eae2145a3e427db6f36`
+- Image: `ghcr.io/hfenner/phpdetect-ee@sha256:dd455925cb1249c93cefd2508098d88951e933bde750ddc672c0c433ff6577a5`
+- Architecture: Linux amd64.
+
 ## Image
+
 
 The [build workflow](../.github/workflows/build-ee.yml) builds with Ansible Builder 3, runs classification, package parsing, syntax and Linux discovery checks as UID 1000, then publishes to the repository-linked GHCR package `ghcr.io/hfenner/phpdetect-ee`. Tags are `aap2.7` and `sha-<source commit>`. Use the **immutable digest** from the successful workflow summary or its `phpdetect-ee-build` artifact in AAP. The source checkout is supplied by the AAP Project, not baked into the EE. Inventory and credentials are never included in the image.
 

@@ -6,7 +6,7 @@ aap_inventory_id: 1
 aap_machine_credential_id: 1
 # Only needed for a private registry/package; use an existing Container Registry credential.
 # aap_registry_credential_id: 2
-# Copy the immutable reference from the successful build workflow's summary.
-phpdetect_ee_image: ghcr.io/hfenner/phpdetect-ee@sha256:REPLACE_WITH_PUBLISHED_DIGEST
+# Tested public image; update this reference after reviewing a later successful build.
+phpdetect_ee_image: ghcr.io/hfenner/phpdetect-ee@sha256:dd455925cb1249c93cefd2508098d88951e933bde750ddc672c0c433ff6577a5
 # Pin to a reviewed source commit for controlled rollouts, or track main.
-phpdetect_project_revision: main
+phpdetect_project_revision: 5900a1fbae8345983c922eae2145a3e427db6f36
