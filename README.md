@@ -4,7 +4,7 @@ Executable Ansible automation for PHP2Shell discovery and separately invoked rem
 
 ## Run
 
-Requires Ansible Core 2.19+ on the controller, Python 3.11+ on managed Linux hosts, and SSH access. Run from this repository root so `ansible.cfg` loads the bundled `phpdetect` module. The example inventory is intentionally empty.
+Requires Ansible Core 2.19+ on the controller, Ansible's supported Python runtime on managed Linux hosts, and SSH access. Run from this repository root so `ansible.cfg` loads the inventory defaults. The example inventory is intentionally empty. There are no project Python scripts or custom modules: collection, classification, updates, snapshot refresh, and tests are Ansible YAML tasks. A read-only Bash task uses Linux procfs and standard utilities to compare live executables and mapped files; it is embedded directly in the task file.
 
 ```sh
 # Use your private inventory, group php_targets, and host_vars.
@@ -53,12 +53,14 @@ Package updates require `python3-apt` or `python3-dnf` on the target, supported 
 ## Validation
 
 ```sh
-python3 -m unittest discover -s tests -v
+ansible-playbook tests/classification.yml
+ansible-playbook tests/package-parsing.yml
 ansible-playbook playbooks/discover.yml --syntax-check
 ansible-playbook playbooks/update.yml --syntax-check
+ansible-playbook playbooks/refresh-ncsc.yml --syntax-check
 ansible-playbook -i tests/local.yml playbooks/discover.yml
 ```
 
-The local integration inventory runs discovery only; it never authorizes updates. Tests cover vendor backports, stale/deleted workers and libraries, ignored pseudo-file mappings, container-namespace processes, missing permissions/CVEs, OS mismatches, and unknown results. No production package update or container rollout has been tested by this repository.
+The local integration inventory runs discovery only; it never authorizes updates. Sixteen Ansible policy cases exercise the actual classification task, including vendor backports, stale worker evidence, missing permissions/CVEs, OS mismatches, and unknown results. Package parsing tests verify exact Debian/RPM revisions and check the embedded Bash task's syntax. Procfs collection requires Linux; a non-Linux integration host returns unknown. No production package update or container rollout has been tested by this repository.
 
 Sources: [NCSC PHP2Shell inventory](https://github.com/NCSC-NL/php2shell), [PHP advisory](https://www.php.net/archive/2026.php#2026-10-21-5), [Ansible apt](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/apt_module.html), [Ansible dnf](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/dnf_module.html). Advisory baseline reviewed 2026-10-22; refresh vendor evidence before use.

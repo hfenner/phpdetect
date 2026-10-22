@@ -1,0 +1,38 @@
+---
+- name: Test exact package revisions and procfs task syntax
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Parse Debian fixture using production tasks
+      ansible.builtin.include_tasks: ../playbooks/tasks/parse-packages.yml
+      vars:
+        detected_manager: apt
+        debian_packages:
+          stdout_lines:
+            - "php8.3-fpm|8.3.6-1vendor1|installed"
+            - "php8.3-common:amd64|8.3.6-1vendor1|installed"
+            - "php7.4-fpm|7.4.0-old|config-files"
+    - name: Require exact Debian revision and exclude removed packages
+      ansible.builtin.assert:
+        that:
+          - installed_packages['php8.3-fpm'] == '8.3.6-1vendor1'
+          - installed_packages['php8.3-common:amd64'] == '8.3.6-1vendor1'
+          - "'php7.4-fpm' not in installed_packages"
+    - name: Parse RPM fixture using production tasks
+      ansible.builtin.include_tasks: ../playbooks/tasks/parse-packages.yml
+      vars:
+        detected_manager: dnf
+        rpm_packages:
+          stdout_lines:
+            - "php-fpm|0:8.3.6-2.el9.x86_64"
+    - name: Require epoch release and architecture to be retained
+      ansible.builtin.assert:
+        that: installed_packages == {'php-fpm':'0:8.3.6-2.el9.x86_64'}
+    - name: Syntax-check the embedded procfs command without executing it
+      ansible.builtin.command:
+        argv: [bash, '-n']
+        stdin: >-
+          {{ (lookup('ansible.builtin.file', playbook_dir ~ '/../playbooks/tasks/assess-runtime.yml')
+          | from_yaml | selectattr('name', 'equalto', 'Inspect all live instances and their file mappings without changing them')
+          | first)['ansible.builtin.shell'] }}
+      changed_when: false

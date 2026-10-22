@@ -47,14 +47,22 @@
         that:
           - "'*' not in item"
           - "'REPLACE_' not in item"
-          - "(ansible_facts.os_family == 'Debian' and item is match('^[a-z0-9][a-z0-9+.-]*=[A-Za-z0-9+.:~-]+$')) or (ansible_facts.os_family == 'RedHat' and item is match('^[A-Za-z0-9][A-Za-z0-9+._-]*-[0-9]+:[A-Za-z0-9+._~^-]+\\.[a-z0-9_]+$'))"
+          - >-
+            (ansible_facts.os_family == 'Debian' and item is match('^[a-z0-9][a-z0-9+.-]*=[A-Za-z0-9+.:~-]+$')) or
+            (ansible_facts.os_family == 'RedHat' and item is match('^[A-Za-z0-9][A-Za-z0-9+._-]*-[0-9]+:[A-Za-z0-9+._~^-]+[.][a-z0-9_]+$'))
         fail_msg: 'Package specs must be a single pinned name=version (apt) or name-epoch:version-release.arch (dnf) with no whitespace or options.'
       loop: '{{ phpdetect_update.packages }}'
     - name: Collect pre-change evidence even in check mode
-      phpdetect:
-        runtimes: '{{ update_runtimes }}'
-      register: before
-      no_log: true
+      ansible.builtin.include_tasks:
+        file: tasks/collect.yml
+        apply:
+          no_log: true
+      vars:
+        assessment_runtimes: '{{ update_runtimes }}'
+    - name: Preserve pre-change report
+      ansible.builtin.set_fact:
+        before:
+          report: '{{ assessment_report }}'
     - name: Require evidence for this OS and exact package plan
       ansible.builtin.assert:
         that:
@@ -112,9 +120,17 @@
           loop: '{{ phpdetect_update.services }}'
           when: not ansible_check_mode
         - name: Verify package ownership and all live mapped artifacts
-          phpdetect:
-            runtimes: '{{ update_runtimes }}'
-          register: after
+          ansible.builtin.include_tasks:
+            file: tasks/collect.yml
+            apply:
+              no_log: true
+          vars:
+            assessment_runtimes: '{{ update_runtimes }}'
+          when: not ansible_check_mode
+        - name: Preserve post-change report
+          ansible.builtin.set_fact:
+            after:
+              report: '{{ assessment_report }}'
           when: not ansible_check_mode
           no_log: true
         - name: Require every planned runtime to be verified patched

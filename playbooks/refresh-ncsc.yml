@@ -1,0 +1,90 @@
+---
+- name: Refresh the bundled NCSC snapshot using Ansible only
+  hosts: localhost
+  gather_facts: false
+  vars:
+    ncsc_source: '{{ phpdetect_ncsc_source | default("https://github.com/NCSC-NL/php2shell.git") }}'
+    ncsc_destination: '{{ phpdetect_ncsc_destination | default(playbook_dir ~ "/../data/ncsc/snapshot.json") }}'
+  tasks:
+    - name: Require an actual refresh rather than an incomplete check-mode clone
+      ansible.builtin.assert:
+        that: not ansible_check_mode
+        fail_msg: Refresh is controller-only and requires a real run; check mode does not replace the snapshot.
+    - name: Allocate temporary source checkout
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: phpdetect-ncsc-
+      register: source_checkout
+    - name: Build and atomically replace the snapshot only after successful validation
+      block:
+        - name: Clone the NCSC source without executing its code
+          ansible.builtin.git:
+            repo: '{{ ncsc_source }}'
+            dest: '{{ source_checkout.path }}/source'
+            version: main
+            depth: 1
+            single_branch: true
+        - name: Resolve the source commit
+          ansible.builtin.command:
+            argv: [git, '-C', '{{ source_checkout.path }}/source', rev-parse, HEAD]
+          register: snapshot_commit
+          changed_when: false
+        - name: Read the source commit date
+          ansible.builtin.command:
+            argv: [git, '-C', '{{ source_checkout.path }}/source', show, '-s', '--format=%cI', '{{ snapshot_commit.stdout }}']
+          register: snapshot_date
+          changed_when: false
+        - name: List committed paths
+          ansible.builtin.command:
+            argv: [git, '-C', '{{ source_checkout.path }}/source', ls-tree, '-r', '--name-only', '{{ snapshot_commit.stdout }}']
+          register: source_paths
+          changed_when: false
+        - name: Select only product list documents
+          ansible.builtin.set_fact:
+            snapshot_paths: '{{ source_paths.stdout_lines | select("match", "^software/software_list[^/]*[.]md$") | sort | list }}'
+            snapshot_pages: []
+        - name: Reject an empty list collection before touching the existing snapshot
+          ansible.builtin.assert:
+            that:
+              - snapshot_commit.stdout is match('^[0-9a-f]{40}$')
+              - snapshot_paths | length > 0
+        - name: Read each product list from the pinned commit
+          ansible.builtin.command:
+            argv: [git, '-C', '{{ source_checkout.path }}/source', show, '{{ snapshot_commit.stdout }}:{{ item }}']
+            strip_empty_ends: false
+          loop: '{{ snapshot_paths }}'
+          register: snapshot_documents
+          changed_when: false
+        - name: Reject empty documents
+          ansible.builtin.assert:
+            that: >-
+              snapshot_documents.results | map(attribute='stdout') | map('trim')
+              | reject('equalto', '') | list | length == snapshot_paths | length
+        - name: Assemble the document snapshot
+          ansible.builtin.set_fact:
+            snapshot_pages: '{{ snapshot_pages + [{"path": item.item, "content": item.stdout, "status": 200}] }}'
+          loop: '{{ snapshot_documents.results }}'
+          loop_control:
+            label: '{{ item.item }}'
+        - name: Preserve the upstream license
+          ansible.builtin.command:
+            argv: [git, '-C', '{{ source_checkout.path }}/source', show, '{{ snapshot_commit.stdout }}:LICENSE']
+            strip_empty_ends: false
+          register: snapshot_license
+          changed_when: false
+        - name: Require nonempty license text
+          ansible.builtin.assert:
+            that: snapshot_license.stdout | trim | length > 0
+        - name: Write validated snapshot atomically
+          ansible.builtin.copy:
+            dest: '{{ ncsc_destination }}'
+            mode: '0644'
+            content: >-
+              {{ {"source": ncsc_source | regex_replace('[.]git$', ''), "commit_sha": snapshot_commit.stdout,
+              "commit_date": snapshot_date.stdout, "license": snapshot_license.stdout,
+              "pages": snapshot_pages} | to_nice_json }}
+      always:
+        - name: Remove the temporary upstream checkout
+          ansible.builtin.file:
+            path: '{{ source_checkout.path }}'
+            state: absent

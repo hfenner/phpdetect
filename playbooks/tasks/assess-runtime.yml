@@ -1,0 +1,120 @@
+---
+- name: Initialize runtime evidence
+  ansible.builtin.set_fact:
+    runtime_evidence: '{{ runtime.evidence | default({}) }}'
+    runtime_packages_match: true
+    runtime_owner: ''
+    runtime_processes: []
+
+- name: Resolve the mapped artifact
+  ansible.builtin.command:
+    argv: [readlink, '-f', '{{ runtime.artifact | default("/nonexistent-phpdetect") }}']
+  register: resolved_artifact
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Read the Debian owner of the mapped artifact
+  ansible.builtin.command:
+    argv: [dpkg-query, '-S', '{{ resolved_artifact.stdout }}']
+  register: debian_owner
+  when: detected_manager == 'apt' and resolved_artifact.rc == 0
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Read the RPM owner of the mapped artifact
+  ansible.builtin.command:
+    argv: [rpm, '-qf', '--qf', '%{NAME}', '{{ resolved_artifact.stdout }}']
+  register: rpm_owner
+  when: detected_manager == 'dnf' and resolved_artifact.rc == 0
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Record the owning package
+  ansible.builtin.set_fact:
+    runtime_owner: >-
+      {{ (debian_owner.stdout.split(': /', 1)[0] if debian_owner.rc | default(1) == 0
+      else rpm_owner.stdout if rpm_owner.rc | default(1) == 0 else '') }}
+
+- name: Compare every vendor-approved package revision
+  ansible.builtin.set_fact:
+    runtime_packages_match: '{{ runtime_packages_match and installed_packages.get(item.key, "") == item.value | string }}'
+  loop: '{{ runtime_evidence.get("packages", {}) | dict2items }}'
+
+- name: Inspect all live instances and their file mappings without changing them
+  # Linux procfs needs a short OS-native loop. All assessment policy remains in YAML.
+  # Exit 3 means incomplete visibility; it never clears the runtime.
+  ansible.builtin.shell: |
+    set -o pipefail
+    [ "$(id -u)" = 0 ] || exit 3
+    [ -f "$PHPDETECT_ARTIFACT" ] || exit 3
+    host_root=$(stat -Lc '%d:%i' /) || exit 3
+    for proc in /proc/[0-9]*; do
+      exe=$(readlink "$proc/exe" 2>/dev/null) || {
+        [ ! -d "$proc" ] && continue
+        command_line=$(tr '\0' ' ' < "$proc/cmdline" 2>/dev/null) || exit 3
+        [ -z "$command_line" ] && continue
+        exit 3
+      }
+      process_root=$(stat -Lc '%d:%i' "$proc/root" 2>/dev/null) || exit 3
+      [ "$process_root" = "$host_root" ] || continue
+      [ -r "$proc/maps" ] || exit 3
+      maps=$(cat "$proc/maps" 2>/dev/null) || exit 3
+      matched=0
+      [ "${exe% (deleted)}" = "$PHPDETECT_ARTIFACT" ] && matched=1
+      awk -v path="$PHPDETECT_ARTIFACT" '$6 == path { found=1 } END { exit !found }' <<< "$maps" && matched=1
+      [ "$matched" = 1 ] || continue
+      current=true
+      if [ "${exe% (deleted)}" = "$PHPDETECT_ARTIFACT" ]; then
+        [ "$exe" = "$PHPDETECT_ARTIFACT" ] || current=false
+        [ "$(stat -Lc '%d:%i' "$proc/exe")" = "$(stat -Lc '%d:%i' "$PHPDETECT_ARTIFACT")" ] || current=false
+      fi
+      while read -r region perms offset dev inode path; do
+        case "$path" in
+          /memfd:*|/dev/*|/SYSV*|/anon_hugepage*|/\[*|/i915*|/drm*|/tmp/*|/var/tmp/*|/run/*) continue ;;
+          /*)
+            case "$path" in *' (deleted)') current=false; continue ;; esac
+            major=$((16#${dev%:*})); minor=$((16#${dev#*:}))
+            device=$(( (minor & 255) | ((major & 4095) << 8) | ((minor & ~255) << 12) | ((major & ~4095) << 32) ))
+            [ "$(stat -Lc '%d:%i' "$proc/root$path" 2>/dev/null)" = "$device:$inode" ] || current=false
+            ;;
+        esac
+      done <<< "$maps"
+      printf '%s|%s\n' "${proc##*/}" "$current"
+    done
+  args:
+    executable: /bin/bash
+  environment:
+    PHPDETECT_ARTIFACT: '{{ resolved_artifact.stdout | default("") }}'
+  register: live_artifacts
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Parse process evidence
+  ansible.builtin.set_fact:
+    runtime_processes: '{{ runtime_processes + [{"pid": item.split("|")[0], "current": item.split("|")[1] == "true"}] }}'
+  loop: '{{ live_artifacts.stdout_lines | default([]) }}'
+  when: item is match('^[0-9]+[|](true|false)$')
+
+- name: Evaluate vendor and running-build evidence
+  ansible.builtin.include_tasks: classify.yml
+  vars:
+    classify_evidence: '{{ runtime_evidence }}'
+    classify_os: '{{ os_release }}'
+    classify_packages_match: '{{ runtime_packages_match and runtime.kind | default("package") == "package" }}'
+    classify_owner: '{{ runtime_owner }}'
+    classify_processes: '{{ runtime_processes }}'
+    classify_visibility: '{{ live_artifacts.rc == 0 }}'
+
+- name: Append runtime assessment
+  ansible.builtin.set_fact:
+    collected_runtimes: >-
+      {{ collected_runtimes + [{"id": runtime.id, "sites": runtime.sites | default([]),
+      "artifact": runtime.artifact | default(''), "package_owner": runtime_owner,
+      "priority": 'P2' if runtime.exposure | default('unknown') == 'internal' else 'P1',
+      "exposure": runtime.exposure | default('unknown'), "patch_status": classified_status,
+      "processes": runtime_processes, "running_build_verified": classified_live,
+      "evidence": runtime_evidence, "reason": classified_reason}] }}

@@ -1,0 +1,15 @@
+---
+- name: Evaluate the production classification policy
+  ansible.builtin.include_tasks: ../playbooks/tasks/classify.yml
+  vars:
+    classify_evidence: '{{ fixture_evidence | combine(test_case.evidence | default({})) }}'
+    classify_os: '{{ test_case.os | default(fixture_os) }}'
+    classify_packages_match: '{{ test_case.packages_match | default(true) }}'
+    classify_owner: '{{ test_case.owner | default("php-fpm") }}'
+    classify_processes: '{{ test_case.processes | default([{"pid": "123", "current": true}]) }}'
+    classify_visibility: '{{ test_case.visibility | default(true) }}'
+
+- name: Assert the expected classification
+  ansible.builtin.assert:
+    that: classified_status == test_case.expected
+    fail_msg: 'Failed {{ test_case.name }}: got {{ classified_status }}, expected {{ test_case.expected }}'

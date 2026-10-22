@@ -20,8 +20,10 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.event.repository.default_branch }}
+      - name: Install Ansible
+        run: pip install 'ansible-core>=2.19,<2.22'
       - name: Refresh snapshot from NCSC main
-        run: python3 scripts/update_ncsc_snapshot.py
+        run: ansible-playbook playbooks/refresh-ncsc.yml
       - name: Commit changed snapshot
         run: |
           set -euo pipefail

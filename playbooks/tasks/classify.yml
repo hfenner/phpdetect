@@ -1,0 +1,27 @@
+---
+- name: Check complete vendor evidence for the exact operating system and package owner
+  ansible.builtin.set_fact:
+    classified_vendor: >-
+      {{ classify_evidence.get('advisory_url', '') is match('^https://')
+      and classify_evidence.get('checked_at', '') | length > 0
+      and classify_evidence.get('channel', '') | length > 0
+      and ['CVE-2026-109618', 'CVE-2026-109619'] | difference(classify_evidence.get('cves', [])) | length == 0
+      and classify_evidence.get('os_id', '') | string == classify_os.get('ID', 'unknown')
+      and classify_evidence.get('os_version', '') | string == classify_os.get('VERSION_ID', 'unknown')
+      and classify_evidence.get('packages', {}) | length > 0
+      and classify_packages_match and classify_owner in classify_evidence.get('packages', {}) }}
+    classified_live: >-
+      {{ classify_visibility and classify_processes | length > 0
+      and classify_processes | rejectattr('current', 'equalto', true) | list | length == 0 }}
+
+- name: Keep incomplete results unknown
+  ansible.builtin.set_fact:
+    classified_status: >-
+      {{ 'affected' if classified_vendor and classify_evidence.get('status') == 'affected'
+      else 'patched' if classified_vendor and classified_live and classify_evidence.get('status') == 'patched'
+      else 'unknown' }}
+    classified_reason: >-
+      {{ 'Exact affected vendor build' if classified_vendor and classify_evidence.get('status') == 'affected'
+      else 'Vendor package and running artifact evidence verified'
+      if classified_vendor and classified_live and classify_evidence.get('status') == 'patched'
+      else 'Missing or mismatched vendor, package, ownership, or live-process evidence' }}

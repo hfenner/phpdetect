@@ -19,7 +19,7 @@
           - ncsc_snapshot.pages | length > 0
           - ncsc_snapshot.pages | selectattr('content', 'defined') | list | length == ncsc_snapshot.pages | length
           - ncsc_snapshot.pages | rejectattr('status', 'equalto', 200) | list | length == 0
-        fail_msg: 'Bundled NCSC snapshot is invalid. Refresh it with scripts/update_ncsc_snapshot.py.'
+        fail_msg: 'Bundled NCSC snapshot is invalid. Run playbooks/refresh-ncsc.yml.'
     - name: Store the source snapshot privately
       ansible.builtin.copy:
         dest: '{{ phpdetect_run.path }}/ncsc.json'
@@ -40,12 +40,12 @@
   become: '{{ phpdetect_become | default(false) }}'
   tasks:
     - name: Collect package, process, runtime, and container evidence
-      phpdetect:
-        runtimes: '{{ phpdetect_runtimes | default([]) }}'
-        # Opt in to docker exec php -n -v inside running containers; it executes image code.
-        container_cli_probe: '{{ phpdetect_container_cli_probe | default(false) | bool }}'
-      register: discovery
-      no_log: true
+      ansible.builtin.include_tasks:
+        file: tasks/collect.yml
+        apply:
+          no_log: true
+      vars:
+        assessment_runtimes: '{{ phpdetect_runtimes | default([]) }}'
     - name: Build product candidate matches without treating matches as clearance
       ansible.builtin.set_fact:
         product_matches: >-
@@ -58,7 +58,7 @@
       ansible.builtin.copy:
         dest: '{{ hostvars.localhost.phpdetect_run.path }}/{{ inventory_hostname | hash("sha256") }}.json'
         mode: '0600'
-        content: '{{ discovery.report | combine({"host": inventory_hostname, "products": product_matches | default([])}) | to_nice_json }}'
+        content: '{{ assessment_report | combine({"host": inventory_hostname, "products": product_matches | default([])}) | to_nice_json }}'
       delegate_to: localhost
       become: false
       check_mode: false

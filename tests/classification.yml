@@ -1,0 +1,46 @@
+---
+- name: Verify the actual Ansible classification tasks
+  hosts: localhost
+  gather_facts: false
+  vars:
+    fixture_os:
+      ID: ubuntu
+      VERSION_ID: '24.04'
+    fixture_evidence:
+      status: patched
+      advisory_url: https://vendor.example.invalid/advisory
+      checked_at: '2026-10-22T12:00:00Z'
+      channel: security
+      cves: [CVE-2026-109618, CVE-2026-109619]
+      os_id: ubuntu
+      os_version: '24.04'
+      packages:
+        php-fpm: 8.3.6-vendor-backport
+    cases:
+      - {name: exact backport and live workers, expected: patched}
+      - {name: mismatched package, packages_match: false, expected: unknown}
+      - {name: no live workers, processes: [], expected: unknown}
+      - name: stale worker
+        processes: [{pid: '123', current: false}]
+        expected: unknown
+      - name: one stale replica
+        processes: [{pid: '123', current: true}, {pid: '456', current: false}]
+        expected: unknown
+      - {name: incomplete process visibility, visibility: false, expected: unknown}
+      - {name: wrong package owner, owner: unrelated, expected: unknown}
+      - {name: one CVE only, evidence: {cves: [CVE-2026-109618]}, expected: unknown}
+      - {name: wrong distribution, evidence: {os_id: debian}, expected: unknown}
+      - {name: wrong OS release, evidence: {os_version: '22.04'}, expected: unknown}
+      - {name: missing advisory, evidence: {advisory_url: ''}, expected: unknown}
+      - {name: no package coverage, evidence: {packages: {}}, expected: unknown}
+      - {name: confirmed affected package, evidence: {status: affected}, expected: affected}
+      - {name: missing channel, evidence: {channel: ''}, expected: unknown}
+      - {name: missing review timestamp, evidence: {checked_at: ''}, expected: unknown}
+      - {name: numeric OS version, evidence: {os_version: 24}, os: {ID: ubuntu, VERSION_ID: '24'}, expected: patched}
+  tasks:
+    - name: Run every evidence-policy case
+      ansible.builtin.include_tasks: classification-case.yml
+      loop: '{{ cases }}'
+      loop_control:
+        loop_var: test_case
+        label: '{{ test_case.name }}'

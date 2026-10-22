@@ -1,0 +1,15 @@
+---
+- name: Parse installed Debian package records in one operation
+  ansible.builtin.set_fact:
+    installed_packages: >-
+      {{ dict(debian_packages.stdout_lines | select('search', '[|]installed$') | map('split', '|')
+      | map(attribute='0') | zip(debian_packages.stdout_lines | select('search', '[|]installed$')
+      | map('split', '|') | map(attribute='1'))) }}
+  when: detected_manager == 'apt'
+
+- name: Parse installed RPM package records
+  ansible.builtin.set_fact:
+    installed_packages: >-
+      {{ dict(rpm_packages.stdout_lines | map('split', '|') | map(attribute='0')
+      | zip(rpm_packages.stdout_lines | map('split', '|') | map(attribute='1'))) }}
+  when: detected_manager == 'dnf'

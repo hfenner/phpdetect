@@ -1,0 +1,235 @@
+---
+- name: Initialize conservative collection state
+  ansible.builtin.set_fact:
+    collected_runtimes: []
+    installed_packages: {}
+    os_release: {}
+    collection_gaps: []
+    collected_containers: []
+    container_cli_evidence: []
+    routing_hints: []
+    php_candidates: []
+    detected_manager: unknown
+    foreign_candidates: []
+
+- name: Read operating system without changing the host
+  ansible.builtin.command:
+    argv: [uname, '-s']
+  register: operating_system
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Collect Linux evidence
+  when: operating_system.stdout | default('') == 'Linux'
+  block:
+    - name: Read distribution release
+      ansible.builtin.slurp:
+        src: /etc/os-release
+      register: release_file
+      failed_when: false
+
+    - name: Parse distribution release
+      ansible.builtin.set_fact:
+        os_release: '{{ os_release | combine({item.split("=", 1)[0]: item.split("=", 1)[1] | replace(''"'', "")}) }}'
+      loop: '{{ (release_file.content | default("") | b64decode).splitlines() | select("match", "^[A-Z_]+=.*") | list }}'
+
+    - name: Read installed Debian package revisions
+      ansible.builtin.command:
+        argv: [dpkg-query, '-W', '-f=${binary:Package}|${Version}|${db:Status-Status}\n']
+      register: debian_packages
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Read installed RPM package revisions when Debian tools are absent
+      ansible.builtin.command:
+        argv: [rpm, '-qa', '--qf', '%{NAME}|%{EPOCHNUM}:%{VERSION}-%{RELEASE}.%{ARCH}\n']
+      register: rpm_packages
+      when: debian_packages.rc != 0
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Determine package manager evidence
+      ansible.builtin.set_fact:
+        detected_manager: '{{ "apt" if debian_packages.rc == 0 else "dnf" if rpm_packages.rc | default(1) == 0 else "unknown" }}'
+
+    - name: Parse the installed package database
+      ansible.builtin.include_tasks: parse-packages.yml
+
+    - name: Find common PHP installations without executing them
+      ansible.builtin.shell: |
+        set -o pipefail
+        for directory in /usr/bin /usr/sbin /usr/local/bin /usr/local/sbin \
+          /opt/plesk/php/*/sbin /opt/cpanel/ea-php*/root/usr/sbin \
+          /usr/lib/apache2/modules /usr/lib64/httpd/modules; do
+          [ -d "$directory" ] || continue
+          find "$directory" -maxdepth 1 \( -type f -o -type l \) -iname '*php*' -print |
+            while IFS= read -r candidate; do
+              magic=$(od -An -tx1 -N4 "$candidate" 2>/dev/null | tr -d ' \n')
+              [ "$magic" != '7f454c46' ] || printf '%s\n' "$candidate"
+            done
+        done
+      args:
+        executable: /bin/bash
+      register: candidate_paths
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Retain unmapped installation candidates
+      ansible.builtin.set_fact:
+        php_candidates: '{{ candidate_paths.stdout_lines | default([]) | unique | list }}'
+
+    - name: Read process names without command arguments
+      ansible.builtin.command:
+        argv: [ps, '-eo', 'pid=,comm=']
+      register: process_names
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Identify PHP executables under a different process root
+      ansible.builtin.shell: |
+        set -o pipefail
+        host_root=$(stat -Lc '%d:%i' /) || exit 3
+        for proc in /proc/[0-9]*; do
+          exe=$(readlink "$proc/exe" 2>/dev/null) || continue
+          case "$exe" in
+            *php*|*franken*)
+              process_root=$(stat -Lc '%d:%i' "$proc/root" 2>/dev/null) || continue
+              [ "$process_root" = "$host_root" ] || printf '%s|%s\n' "${proc##*/}" "$exe"
+              ;;
+          esac
+        done
+      args:
+        executable: /bin/bash
+      register: foreign_processes
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Keep foreign-root candidates explicitly unknown
+      ansible.builtin.set_fact:
+        foreign_candidates: >-
+          {{ foreign_candidates + [{"process_and_artifact": item, "patch_status": "unknown",
+          "reason": "Process root differs from the host; assess the container or chroot separately"}] }}
+      loop: '{{ foreign_processes.stdout_lines | default([]) }}'
+
+    - name: Inspect Nginx configuration privately
+      ansible.builtin.command:
+        argv: [nginx, '-T']
+      register: nginx_configuration
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Retain only Nginx routing directives without credential URLs
+      ansible.builtin.set_fact:
+        routing_hints: >-
+          {{ nginx_configuration.stdout_lines | default([])
+          | select('match', '^\s*(server_name|fastcgi_pass|proxy_pass)\s')
+          | reject('search', '@') | list }}
+      when: nginx_configuration.rc == 0
+      no_log: true
+
+    - name: Read Apache virtual-host mappings privately
+      ansible.builtin.command:
+        argv: ['{{ item }}', '-S']
+      loop: [apachectl, apache2ctl, httpd]
+      register: apache_configuration
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Retain successful Apache routing hints
+      ansible.builtin.set_fact:
+        routing_hints: '{{ routing_hints + item.stdout_lines }}'
+      loop: '{{ apache_configuration.results }}'
+      when: item.rc == 0
+      no_log: true
+
+    - name: Assess each explicitly mapped runtime
+      ansible.builtin.include_tasks: assess-runtime.yml
+      loop: '{{ assessment_runtimes | default([]) }}'
+      loop_control:
+        loop_var: runtime
+        label: '{{ runtime.id }}'
+
+    - name: Enumerate Docker containers
+      ansible.builtin.command:
+        argv: [docker, ps, '-aq', '--no-trunc']
+      register: docker_ids
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Inspect container identity without logging full configuration
+      ansible.builtin.command:
+        argv: [docker, inspect, '{{ item }}']
+      loop: '{{ docker_ids.stdout_lines | default([]) }}'
+      register: docker_details
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Keep only container identity and running state
+      ansible.builtin.set_fact:
+        collected_containers: >-
+          {{ collected_containers + [{"id": (item.stdout | from_json)[0].Id,
+          "name": (item.stdout | from_json)[0].Name,
+          "image_id": (item.stdout | from_json)[0].Image,
+          "image_reference": (item.stdout | from_json)[0].Config.Image,
+          "running": (item.stdout | from_json)[0].State.Running, "patch_status": "unknown"}] }}
+      loop: '{{ docker_details.results | default([]) }}'
+      when: item.rc | default(1) == 0
+      no_log: true
+
+    - name: Read container CLI PHP version as supporting evidence only
+      ansible.builtin.command:
+        argv: [docker, exec, '{{ item.id }}', php, '-n', '-v']
+      loop: '{{ collected_containers }}'
+      when: item.running and phpdetect_container_cli_probe | default(false) | bool
+      register: container_versions
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Record incomplete Linux discovery coverage
+      ansible.builtin.set_fact:
+        collection_gaps: >-
+          {{ ([] if detected_manager != 'unknown' else ['Package database unavailable'])
+          + ([] if docker_ids.rc == 0 else ['Docker unavailable or inaccessible; container coverage unknown'])
+          + (['One or more containers could not be inspected']
+          if docker_details.results | default([]) | rejectattr('rc', 'equalto', 0) | list | length > 0 else []) }}
+
+    - name: Retain version-only evidence linked to each running container
+      ansible.builtin.set_fact:
+        container_cli_evidence: >-
+          {{ container_cli_evidence + [{"container_id": item.item.id,
+          "php_cli_version": item.stdout | regex_search('(?m)^PHP [^\r\n]+'),
+          "patch_status": "unknown"}] }}
+      loop: '{{ container_versions.results | default([]) }}'
+      when: item.rc | default(1) == 0
+
+- name: Assemble the host report without inferring complete coverage
+  ansible.builtin.set_fact:
+    assessment_report:
+      platform: '{{ operating_system.stdout | default("unknown") }}'
+      os_release: '{{ os_release }}'
+      package_manager: '{{ detected_manager | default("unknown") }}'
+      php_packages: '{{ installed_packages | dict2items | selectattr("key", "search", "php") | items2dict }}'
+      runtimes: '{{ collected_runtimes }}'
+      candidates: '{{ php_candidates }}'
+      foreign_runtime_candidates: '{{ foreign_candidates }}'
+      routing_hints: '{{ routing_hints }}'
+      process_candidates: '{{ process_names.stdout_lines | default([]) | select("search", "(?i)(php|apache|httpd|franken)") | list }}'
+      containers: '{{ collected_containers }}'
+      container_cli_evidence: '{{ container_cli_evidence }}'
+      patch_status: '{{ "affected" if collected_runtimes | selectattr("patch_status", "equalto", "affected") | list | length > 0 else "unknown" }}'
+      gaps: '{{ collection_gaps if operating_system.stdout | default("") == "Linux" else ["Automatic assessment supports Linux only"] }}'
+      scope_note: Configured runtime results do not prove complete host, container, or website coverage.
