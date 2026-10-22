@@ -1,0 +1,13 @@
+all:
+  children:
+    php_targets:
+      hosts:
+        local_test:
+          ansible_connection: local
+          ansible_python_interpreter: '{{ ansible_playbook_python }}'
+          ansible_remote_tmp: /tmp/phpdetect-remote-test
+          phpdetect_become: false
+          phpdetect_products:
+            - name: Synthetic product
+              version: '0'
+              ncsc_term: Synthetic product

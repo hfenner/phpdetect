@@ -1,0 +1,19 @@
+---
+- name: Run the package adapter only for package plans
+  ansible.builtin.import_playbook: _update_packages.yml
+  when: (phpdetect_update | default({})).get('kind', 'package') == 'package'
+
+- name: Run the Docker Compose adapter only for container plans
+  ansible.builtin.import_playbook: _update_containers.yml
+  when: (phpdetect_update | default({})).get('kind', '') == 'docker_compose'
+
+- name: Reject unsupported update adapters
+  hosts: php_targets
+  gather_facts: false
+  tasks:
+    - name: Fail visibly instead of silently skipping a requested update
+      ansible.builtin.assert:
+        that: (phpdetect_update | default({})).get('kind', 'package') in ['package', 'docker_compose']
+        fail_msg: >-
+          Unsupported update adapter. Vendor appliances, Windows and Kubernetes need
+          a dedicated deployment integration; they are not cleared or updated.

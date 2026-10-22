@@ -1,0 +1,108 @@
+---
+- name: Initialize private discovery output and NCSC snapshot
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Create a unique controller report directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: phpdetect-discovery-
+      register: phpdetect_run
+      check_mode: false
+    - name: Resolve the NCSC snapshot commit
+      ansible.builtin.uri:
+        url: https://api.github.com/repos/NCSC-NL/php2shell/commits/main
+        return_content: true
+        timeout: 30
+      register: ncsc_commit
+      failed_when: false
+      when: phpdetect_fetch_ncsc | default(true) | bool
+      check_mode: false
+    - name: Fetch the current NCSC product index
+      ansible.builtin.uri:
+        url: 'https://api.github.com/repos/NCSC-NL/php2shell/git/trees/{{ (ncsc_commit.json | default({})).get("sha", "unavailable") }}?recursive=1'
+        return_content: true
+        timeout: 30
+      when: phpdetect_fetch_ncsc | default(true) | bool
+      register: ncsc_tree
+      failed_when: false
+      check_mode: false
+    - name: Fetch NCSC product list pages
+      ansible.builtin.uri:
+        url: 'https://raw.githubusercontent.com/NCSC-NL/php2shell/{{ ncsc_commit.json.sha }}/{{ item.path }}'
+        return_content: true
+        timeout: 30
+      loop: "{{ (ncsc_tree.json | default({})).get('tree', []) | selectattr('path', 'match', '^software/software_list.*[.]md$') | list }}"
+      loop_control:
+        label: '{{ item.path }}'
+      register: ncsc_pages
+      failed_when: false
+      check_mode: false
+    - name: Store the source snapshot privately
+      ansible.builtin.copy:
+        dest: '{{ phpdetect_run.path }}/ncsc.json'
+        mode: '0600'
+        content: '{{ {"commit_sha": (ncsc_commit.json | default({})).get("sha", "unknown"), "pages": ncsc_pages.results | default([])} | to_nice_json }}'
+      check_mode: false
+    - name: Seed every scoped host as unknown before connections
+      ansible.builtin.copy:
+        dest: '{{ phpdetect_run.path }}/{{ item | hash("sha256") }}.json'
+        mode: '0600'
+        content: '{{ {"host": item, "patch_status": "unknown", "gaps": ["Host not assessed: unreachable, excluded, or collection failed"]} | to_nice_json }}'
+      loop: '{{ groups.php_targets | default([]) }}'
+      check_mode: false
+
+- name: Discover PHP without modifying managed systems
+  hosts: php_targets
+  gather_facts: false
+  become: '{{ phpdetect_become | default(false) }}'
+  tasks:
+    - name: Collect package, process, runtime, and container evidence
+      phpdetect:
+        runtimes: '{{ phpdetect_runtimes | default([]) }}'
+      register: discovery
+    - name: Build product candidate matches without treating matches as clearance
+      ansible.builtin.set_fact:
+        product_matches: >-
+          {{ product_matches | default([]) + [{"product": item, "patch_status": "unknown",
+          "ncsc_matches": ((hostvars.localhost.ncsc_pages.results | default([])
+          | selectattr("content", "defined") | map(attribute="content") | join("\n")).splitlines()
+          | select("search", item.ncsc_term | regex_escape) | list)}] }}
+      loop: '{{ phpdetect_products | default([]) }}'
+    - name: Save the host assessment on the controller
+      ansible.builtin.copy:
+        dest: '{{ hostvars.localhost.phpdetect_run.path }}/{{ inventory_hostname | hash("sha256") }}.json'
+        mode: '0600'
+        content: '{{ discovery.report | combine({"host": inventory_hostname, "products": product_matches | default([])}) | to_nice_json }}'
+      delegate_to: localhost
+      become: false
+      check_mode: false
+
+- name: Summarize the discovery report location
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Assemble all host results including unreachable seeds
+      ansible.builtin.set_fact:
+        all_reports: >-
+          {{ all_reports | default([]) + [lookup("ansible.builtin.file",
+          phpdetect_run.path ~ "/" ~ (item | hash("sha256")) ~ ".json") | from_json] }}
+      loop: '{{ groups.php_targets | default([]) }}'
+    - name: Write the consolidated assessment
+      ansible.builtin.copy:
+        dest: '{{ phpdetect_run.path }}/summary.json'
+        mode: '0600'
+        content: >-
+          {{ {"hosts": all_reports | default([]),
+          "ncsc_commit": (ncsc_commit.json | default({})).get("sha", "unknown"),
+          "ncsc_complete": ((ncsc_pages.results | default([]) | length > 0)
+          and (ncsc_pages.results | default([]) | rejectattr("status", "equalto", 200) | list | length == 0)),
+          "unknown_hosts": all_reports | default([]) | selectattr("patch_status", "equalto", "unknown") | list | length,
+          "affected_hosts": all_reports | default([]) | selectattr("patch_status", "equalto", "affected") | list | length}
+          | to_nice_json }}
+      check_mode: false
+    - name: Show private output directory
+      ansible.builtin.debug:
+        msg: >-
+          Reports and pinned NCSC snapshot: {{ phpdetect_run.path }}.
+          Unknown records require follow-up; host-wide clearance is never inferred from a configured subset.

@@ -1,0 +1,6 @@
+all:
+  children:
+    php_targets:
+      hosts: {}
+# Copy to a PRIVATE inventory and add managed Linux hosts under php_targets.
+# See inventory/runtime.example.yml for per-host variables.

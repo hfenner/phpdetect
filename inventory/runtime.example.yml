@@ -1,0 +1,34 @@
+# Private host_vars/HOST.yml. Values below are deliberately non-deployable examples.
+phpdetect_become: true
+phpdetect_runtimes:
+  - id: storefront-fpm
+    kind: package
+    sites: [https://store.example.invalid]
+    exposure: internet
+    artifact: /usr/sbin/php-fpm8.3
+    # Evidence is an operator-reviewed vendor assertion, never inferred from a banner.
+    evidence:
+      status: patched
+      advisory_url: https://vendor.example.invalid/security/advisory
+      checked_at: 'REPLACE_WITH_UTC_TIMESTAMP'
+      cves: [CVE-2026-109618, CVE-2026-109619]
+      os_id: ubuntu
+      os_version: 'REPLACE_WITH_OS_RELEASE'
+      channel: REPLACE_WITH_VENDOR_CHANNEL
+      packages:
+        php8.3-fpm: REPLACE_WITH_FULL_FIXED_PACKAGE_REVISION
+        php8.3-common: REPLACE_WITH_FULL_FIXED_PACKAGE_REVISION
+phpdetect_products:
+  - name: Example appliance
+    version: REPLACE_WITH_PRODUCT_VERSION
+    ncsc_term: Example appliance
+# Updates act only on this explicit plan, never on discovered candidates.
+phpdetect_update:
+  change_id: REPLACE_WITH_CHANGE_ID
+  runtime_ids: [storefront-fpm]
+  services: [php8.3-fpm]
+  # apt uses name=version. dnf uses exact name-epoch:version-release.arch.
+  packages: ['php8.3-fpm=REPLACE_WITH_FULL_FIXED_PACKAGE_REVISION', 'php8.3-common=REPLACE_WITH_FULL_FIXED_PACKAGE_REVISION']
+  health_checks:
+    - url: https://store.example.invalid/health
+      status_code: 200

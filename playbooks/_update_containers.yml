@@ -1,0 +1,165 @@
+---
+- name: Redeploy one explicitly selected Compose service using an attested image digest
+  hosts: php_targets
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  become: '{{ phpdetect_become | default(false) }}'
+  tasks:
+    - name: Validate immutable image and vendor evidence before mutation
+      ansible.builtin.assert:
+        that:
+          - phpdetect_update.change_id | length > 0
+          - phpdetect_update.compose_file is match('^/')
+          - phpdetect_update.compose_service | length > 0
+          - phpdetect_update.image is search('@sha256:[a-f0-9]{64}$')
+          - phpdetect_update.evidence.image == phpdetect_update.image
+          - phpdetect_update.evidence.advisory_url is match('^https://')
+          - phpdetect_update.evidence.checked_at | length > 0
+          - "['CVE-2026-109618', 'CVE-2026-109619'] | difference(phpdetect_update.evidence.cves) | length == 0"
+          - phpdetect_update.health_checks | length > 0
+          - "'REPLACE_' not in (phpdetect_update | to_json)"
+          - "'example.invalid' not in (phpdetect_update | to_json)"
+    - name: Read the resolved Compose configuration privately
+      ansible.builtin.command:
+        argv: [docker, compose, '-f', '{{ phpdetect_update.compose_file }}', config, '--format', json]
+      register: compose_config
+      changed_when: false
+      check_mode: false
+      no_log: true
+    - name: Require the configured service to use the attested immutable image
+      ansible.builtin.assert:
+        that:
+          - (compose_config.stdout | from_json).services[phpdetect_update.compose_service].image == phpdetect_update.image
+          - "'build' not in (compose_config.stdout | from_json).services[phpdetect_update.compose_service]"
+      no_log: true
+    - name: Collect pre-change container identities
+      ansible.builtin.command:
+        argv: [docker, compose, '-f', '{{ phpdetect_update.compose_file }}', ps, '-aq', '{{ phpdetect_update.compose_service }}']
+      register: old_containers
+      changed_when: false
+      check_mode: false
+    - name: Require an existing service to avoid accidental new deployments
+      ansible.builtin.assert:
+        that: old_containers.stdout_lines | length > 0
+    - name: Create private container change report directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: phpdetect-container-update-
+      register: container_report
+      delegate_to: localhost
+      become: false
+      check_mode: false
+    - name: Redeploy and verify
+      block:
+        - name: Pull the immutable image
+          ansible.builtin.command:
+            argv: [docker, pull, '{{ phpdetect_update.image }}']
+          changed_when: true
+          when: not ansible_check_mode
+        - name: Recreate only the selected service without rebuilding or changing dependencies
+          ansible.builtin.command:
+            argv:
+              - docker
+              - compose
+              - '-f'
+              - '{{ phpdetect_update.compose_file }}'
+              - up
+              - '-d'
+              - '--no-deps'
+              - '--no-build'
+              - '--force-recreate'
+              - '{{ phpdetect_update.compose_service }}'
+          changed_when: true
+          when: not ansible_check_mode
+        - name: Read expected image identity
+          ansible.builtin.command:
+            argv: [docker, image, inspect, '{{ phpdetect_update.image }}']
+          register: expected_image
+          changed_when: false
+          when: not ansible_check_mode
+          no_log: true
+        - name: Get all service replicas
+          ansible.builtin.command:
+            argv: [docker, compose, '-f', '{{ phpdetect_update.compose_file }}', ps, '-aq', '{{ phpdetect_update.compose_service }}']
+          register: new_containers
+          changed_when: false
+          when: not ansible_check_mode
+        - name: Require a complete replacement with no reused container identities
+          ansible.builtin.assert:
+            that:
+              - new_containers.stdout_lines | length >= old_containers.stdout_lines | length
+              - new_containers.stdout_lines | intersect(old_containers.stdout_lines) | length == 0
+          when: not ansible_check_mode
+        - name: Verify every replica is running the attested image
+          ansible.builtin.command:
+            argv: [docker, inspect, '{{ item }}']
+          loop: '{{ new_containers.stdout_lines | default([]) }}'
+          register: replicas
+          changed_when: false
+          until: (replicas.stdout | from_json)[0].State.Running
+          retries: 10
+          delay: 3
+          when: not ansible_check_mode
+          no_log: true
+        - name: Require every replica image ID to match the pulled digest
+          ansible.builtin.assert:
+            that:
+              - (item.stdout | from_json)[0].Image == (expected_image.stdout | from_json)[0].Id
+              - (item.stdout | from_json)[0].State.Running
+              - (item.stdout | from_json)[0].State.get('Health', {}).get('Status', 'healthy') == 'healthy'
+          loop: '{{ replicas.results | default([]) }}'
+          when: not ansible_check_mode
+          no_log: true
+        - name: Check for any old replicas still running
+          ansible.builtin.command:
+            argv: [docker, ps, '-q', '--no-trunc']
+          register: running_containers
+          changed_when: false
+          when: not ansible_check_mode
+        - name: Require all old service replicas to have stopped
+          ansible.builtin.assert:
+            that: running_containers.stdout_lines | intersect(old_containers.stdout_lines) | length == 0
+          when: not ansible_check_mode
+        - name: Verify service endpoints
+          ansible.builtin.uri:
+            url: '{{ item.url }}'
+            status_code: '{{ item.status_code | default(200) }}'
+            validate_certs: true
+            follow_redirects: none
+          loop: '{{ phpdetect_update.health_checks }}'
+          when: not ansible_check_mode
+        - name: Record verified service result
+          ansible.builtin.set_fact:
+            container_result:
+              change_id: '{{ phpdetect_update.change_id }}'
+              progress: '{{ "planned" if ansible_check_mode else "complete" }}'
+              patch_status: '{{ "unknown" if ansible_check_mode else "patched" }}'
+              image: '{{ phpdetect_update.image }}'
+              vendor_evidence: '{{ phpdetect_update.evidence }}'
+              before_container_ids: '{{ old_containers.stdout_lines }}'
+              after_container_ids: '{{ new_containers.stdout_lines | default([]) }}'
+      rescue:
+        - name: Record incomplete change without clearing it
+          ansible.builtin.set_fact:
+            container_result:
+              progress: blocked
+              patch_status: unknown
+              failed_task: '{{ ansible_failed_task.name }}'
+              before_container_ids: '{{ old_containers.stdout_lines }}'
+              after_container_ids: '{{ new_containers.stdout_lines | default([]) }}'
+      always:
+        - name: Save sanitized change evidence on the controller
+          ansible.builtin.copy:
+            dest: '{{ container_report.path }}/result.json'
+            mode: '0600'
+            content: '{{ container_result | default({"patch_status": "unknown", "progress": "blocked"}) | to_nice_json }}'
+          delegate_to: localhost
+          become: false
+          check_mode: false
+        - name: Show private change evidence location
+          ansible.builtin.debug:
+            msg: 'Container change evidence: {{ container_report.path }}'
+    - name: Stop rollout after a blocked change
+      ansible.builtin.assert:
+        that: container_result.progress != 'blocked'

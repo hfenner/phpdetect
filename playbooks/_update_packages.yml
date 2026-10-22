@@ -1,0 +1,157 @@
+---
+- name: Update explicitly mapped PHP runtimes and verify live processes
+  hosts: php_targets
+  serial: 1
+  any_errors_fatal: true
+  gather_facts: true
+  become: '{{ phpdetect_become | default(false) }}'
+  tasks:
+    - name: Validate the update plan before any mutation
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.system == 'Linux'
+          - ansible_facts.os_family in ['Debian', 'RedHat']
+          - phpdetect_update is defined
+          - phpdetect_update.change_id | default('') | length > 0
+          - phpdetect_update.runtime_ids | default([]) | length > 0
+          - phpdetect_update.packages | default([]) | length > 0
+          - phpdetect_update.services | default([]) | length > 0
+          - phpdetect_update.health_checks | default([]) | length > 0
+          - phpdetect_update.runtime_ids | difference(phpdetect_runtimes | map(attribute='id') | list) | length == 0
+        fail_msg: 'A complete explicit package update plan is required. Unsupported platforms/products are not modified.'
+    - name: Select only planned runtime mappings
+      ansible.builtin.set_fact:
+        update_runtimes: '{{ phpdetect_runtimes | selectattr("id", "in", phpdetect_update.runtime_ids) | list }}'
+    - name: Validate vendor coverage and exact expected package revisions
+      ansible.builtin.assert:
+        that:
+          - item.kind | default('package') == 'package'
+          - item.artifact is match('^/')
+          - item.evidence.status == 'patched'
+          - item.evidence.advisory_url is match('^https://')
+          - item.evidence.checked_at | length > 0
+          - item.evidence.channel | length > 0
+          - "['CVE-2026-109618', 'CVE-2026-109619'] | difference(item.evidence.cves) | length == 0"
+          - item.evidence.packages | length > 0
+          - "'REPLACE_' not in (item | to_json)"
+          - "'example.invalid' not in (item | to_json)"
+      loop: '{{ update_runtimes }}'
+    - name: Reject unpinned package operations
+      ansible.builtin.assert:
+        that:
+          - "'*' not in item"
+          - "'REPLACE_' not in item"
+          - "(ansible_facts.os_family == 'Debian' and '=' in item) or (ansible_facts.os_family == 'RedHat' and item is search('-[0-9]+:'))"
+      loop: '{{ phpdetect_update.packages }}'
+    - name: Collect pre-change evidence even in check mode
+      phpdetect:
+        runtimes: '{{ update_runtimes }}'
+      register: before
+    - name: Require evidence for this OS and exact package plan
+      ansible.builtin.assert:
+        that:
+          - item.evidence.os_id == before.report.os_release.ID | replace('"', '')
+          - item.evidence.os_version == before.report.os_release.VERSION_ID | replace('"', '')
+          - before.report.package_manager in ['apt', 'dnf']
+          - item.evidence.packages.keys() | difference(before.report.php_packages.keys()) | length == 0
+      loop: '{{ update_runtimes }}'
+    - name: Build the vendor-approved package plan
+      ansible.builtin.set_fact:
+        approved_packages: '{{ approved_packages | default([]) + [item.key ~ ("=" if ansible_facts.os_family == "Debian" else "-") ~ item.value] }}'
+      loop: '{{ update_runtimes | map(attribute="evidence.packages") | list | combine | dict2items }}'
+    - name: Require exact agreement between update and verification packages
+      ansible.builtin.assert:
+        that:
+          - phpdetect_update.packages | difference(approved_packages) | length == 0
+          - approved_packages | difference(phpdetect_update.packages) | length == 0
+    - name: Create private controller change directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: phpdetect-update-
+      register: change_dir
+      delegate_to: localhost
+      become: false
+      check_mode: false
+    - name: Save the pre-change baseline
+      ansible.builtin.copy:
+        dest: '{{ change_dir.path }}/before.json'
+        mode: '0600'
+        content: '{{ before.report | to_nice_json }}'
+      delegate_to: localhost
+      become: false
+      check_mode: false
+    - name: Apply and verify the change
+      block:
+        - name: Install pinned Debian package revisions
+          ansible.builtin.apt:
+            name: '{{ phpdetect_update.packages }}'
+            state: present
+            only_upgrade: true
+            update_cache: true
+            allow_downgrade: false
+          when: ansible_facts.os_family == 'Debian'
+        - name: Install pinned RPM package revisions
+          ansible.builtin.dnf:
+            name: '{{ phpdetect_update.packages }}'
+            state: present
+            update_only: true
+            allow_downgrade: false
+          when: ansible_facts.os_family == 'RedHat'
+        - name: Restart every explicitly mapped serving service
+          ansible.builtin.service:
+            name: '{{ item }}'
+            state: restarted
+          loop: '{{ phpdetect_update.services }}'
+          when: not ansible_check_mode
+        - name: Verify package ownership and all live mapped artifacts
+          phpdetect:
+            runtimes: '{{ update_runtimes }}'
+          register: after
+          when: not ansible_check_mode
+        - name: Require every planned runtime to be verified patched
+          ansible.builtin.assert:
+            that:
+              - after.report.runtimes | default([]) | length == update_runtimes | length
+              - after.report.runtimes | rejectattr('patch_status', 'equalto', 'patched') | list | length == 0
+            fail_msg: 'Running build could not be verified; the change is not cleared.'
+          when: not ansible_check_mode
+        - name: Check configured application endpoints
+          ansible.builtin.uri:
+            url: '{{ item.url }}'
+            status_code: '{{ item.status_code | default(200) }}'
+            validate_certs: true
+            follow_redirects: none
+          loop: '{{ phpdetect_update.health_checks }}'
+          when: not ansible_check_mode
+        - name: Set final change result
+          ansible.builtin.set_fact:
+            change_result:
+              change_id: '{{ phpdetect_update.change_id }}'
+              progress: '{{ "planned" if ansible_check_mode else "complete" }}'
+              patch_status: '{{ "unknown" if ansible_check_mode else "patched" }}'
+              verification: '{{ after.report | default({}) }}'
+      rescue:
+        - name: Record failed or unverified changes without clearance
+          ansible.builtin.set_fact:
+            change_result:
+              change_id: '{{ phpdetect_update.change_id }}'
+              progress: blocked
+              patch_status: unknown
+              failed_task: '{{ ansible_failed_task.name }}'
+              verification: '{{ after.report | default({}) }}'
+      always:
+        - name: Save change result privately
+          ansible.builtin.copy:
+            dest: '{{ change_dir.path }}/result.json'
+            mode: '0600'
+            content: '{{ change_result | default({"progress": "blocked", "patch_status": "unknown"}) | to_nice_json }}'
+          delegate_to: localhost
+          become: false
+          check_mode: false
+        - name: Show change report location
+          ansible.builtin.debug:
+            msg: 'Change evidence: {{ change_dir.path }}'
+    - name: Stop rollout when a host failed verification
+      ansible.builtin.assert:
+        that: change_result.progress != 'blocked'
+        fail_msg: 'Change blocked; remaining hosts were not updated. Review the private result.json.'

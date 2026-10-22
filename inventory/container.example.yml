@@ -1,0 +1,17 @@
+# Private host_vars for a Docker Compose host. The compose file must already use
+# the reviewed fixed image digest; this playbook does not rewrite your application config.
+phpdetect_become: true
+phpdetect_update:
+  kind: docker_compose
+  change_id: REPLACE_WITH_CHANGE_ID
+  compose_file: /srv/application/compose.yml
+  compose_service: php
+  image: registry.example.invalid/application@sha256:REPLACE_WITH_DIGEST
+  evidence:
+    image: registry.example.invalid/application@sha256:REPLACE_WITH_DIGEST
+    advisory_url: https://vendor.example.invalid/security/advisory
+    checked_at: REPLACE_WITH_UTC_TIMESTAMP
+    cves: [CVE-2026-109618, CVE-2026-109619]
+  health_checks:
+    - url: https://application.example.invalid/health
+      status_code: 200

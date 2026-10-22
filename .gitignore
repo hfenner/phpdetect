@@ -1,5 +1,9 @@
-# Keep real inventory and incident evidence out of this public repository.
 /private/
 /evidence/
-/inventory.json
+/reports/
+/inventory/hosts.yml
+/inventory/host_vars/
+/inventory/group_vars/
+__pycache__/
+*.pyc
 .DS_Store
