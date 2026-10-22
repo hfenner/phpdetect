@@ -60,3 +60,5 @@ ansible-playbook -i localhost, playbooks/destroy-lab-aws.yml \
 ```
 
 The CI workflow validates the CloudFormation template and exercises the actual pinned containers and discovery on an ephemeral GitHub runner. It does not create AWS resources or test the optional vendor-package installation against your selected snapshot.
+
+Verified on source `f7135502d6f42d458a1a85b824151bdb5dac39d3`: [fixture integration and CloudFormation validation](https://github.com/hfenner/phpdetect/actions/runs/39849965763) and [EE build](https://github.com/hfenner/phpdetect/actions/runs/39849965579) passed. The matching immutable EE is `ghcr.io/hfenner/phpdetect-ee@sha256:6ad781c9268c864e6a21cb9a4c35619c68d8d0950fe107949b257ce7d5d25304`. AWS creation/teardown and your optional vendor-package snapshot have not been exercised against a live AWS account.

@@ -4,11 +4,13 @@ This is an unofficial PoC, not Red Hat-provided or certified content. The custom
 
 ## Verified build
 
-[Build 39846972940](https://github.com/hfenner/phpdetect/actions/runs/39846972940) passed all in-image checks, including the Runner job-artifact test. The [public repository-linked package](https://github.com/hfenner/phpdetect/pkgs/container/phpdetect-ee) is available without registry credentials. `site.example.yml` pins this tested pair:
+[Build 39849965579](https://github.com/hfenner/phpdetect/actions/runs/39849965579) passed all in-image checks, including the Runner job-artifact test. The [public repository-linked package](https://github.com/hfenner/phpdetect/pkgs/container/phpdetect-ee) is available without registry credentials. `site.example.yml` pins this tested pair:
 
-- Source: `5900a1fbae8345983c922eae2145a3e427db6f36`
-- Image: `ghcr.io/hfenner/phpdetect-ee@sha256:dd455925cb1249c93cefd2508098d88951e933bde750ddc672c0c433ff6577a5`
+- Source: `f7135502d6f42d458a1a85b824151bdb5dac39d3`
+- Image: `ghcr.io/hfenner/phpdetect-ee@sha256:6ad781c9268c864e6a21cb9a4c35619c68d8d0950fe107949b257ce7d5d25304`
 - Architecture: Linux amd64.
+
+This build also includes the AWS collection and SDK dependencies needed by the [AWS lab builder](../lab/README.md). Its container fixtures passed [integration testing](https://github.com/hfenner/phpdetect/actions/runs/39849965763); no live AWS resources were provisioned during validation.
 
 ## Image
 

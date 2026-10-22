@@ -7,6 +7,6 @@ aap_machine_credential_id: 1
 # Only needed for a private registry/package; use an existing Container Registry credential.
 # aap_registry_credential_id: 2
 # Tested public image; update this reference after reviewing a later successful build.
-phpdetect_ee_image: ghcr.io/hfenner/phpdetect-ee@sha256:dd455925cb1249c93cefd2508098d88951e933bde750ddc672c0c433ff6577a5
+phpdetect_ee_image: ghcr.io/hfenner/phpdetect-ee@sha256:6ad781c9268c864e6a21cb9a4c35619c68d8d0950fe107949b257ce7d5d25304
 # Pin to a reviewed source commit for controlled rollouts, or track main.
-phpdetect_project_revision: 5900a1fbae8345983c922eae2145a3e427db6f36
+phpdetect_project_revision: f7135502d6f42d458a1a85b824151bdb5dac39d3
