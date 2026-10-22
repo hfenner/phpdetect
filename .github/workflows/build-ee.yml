@@ -1,0 +1,64 @@
+name: Build and publish execution environment
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - execution-environment.yml
+      - .github/workflows/build-ee.yml
+      - playbooks/**
+      - tests/**
+      - aap/**
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: phpdetect-ee
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Ansible Builder
+        run: pip install 'ansible-builder>=3.1,<4'
+      - name: Build Linux amd64 execution environment
+        run: ansible-builder build --container-runtime docker --tag ghcr.io/hfenner/phpdetect-ee:sha-${{ github.sha }} --verbosity 2
+      - name: Test playbooks inside the image as a non-root user
+        env:
+          IMAGE: ghcr.io/hfenner/phpdetect-ee:sha-${{ github.sha }}
+        run: |
+          docker run --rm --user 1000:0 -v "$PWD:/runner/project:ro" -w /runner/project "$IMAGE" bash -ec '
+            ansible --version
+            ansible-runner --version
+            ansible-playbook tests/classification.yml
+            ansible-playbook tests/package-parsing.yml
+            ansible-playbook playbooks/discover.yml --syntax-check
+            ansible-playbook playbooks/update.yml --syntax-check
+            ansible-playbook playbooks/refresh-ncsc.yml --syntax-check
+            ansible-playbook aap/install.yml --syntax-check
+            ansible-playbook -i tests/local.yml playbooks/discover.yml -e phpdetect_publish_job_artifacts=true
+          '
+      - name: Publish tested image to GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE: ghcr.io/hfenner/phpdetect-ee
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+          docker push "$IMAGE:sha-${{ github.sha }}"
+          docker tag "$IMAGE:sha-${{ github.sha }}" "$IMAGE:aap2.7"
+          docker push "$IMAGE:aap2.7"
+          docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:sha-${{ github.sha }}" > image-digest.txt
+          printf '### Published execution environment\n\n```\n' >> "$GITHUB_STEP_SUMMARY"
+          cat image-digest.txt >> "$GITHUB_STEP_SUMMARY"
+          printf '```\n' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phpdetect-ee-build
+          path: |
+            image-digest.txt
+            context/Dockerfile

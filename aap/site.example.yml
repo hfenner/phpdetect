@@ -1,0 +1,12 @@
+---
+# Copy to aap/site.yml (gitignored). No credentials belong in this file.
+aap_url: https://gateway.example.com
+aap_organization_id: 1
+aap_inventory_id: 1
+aap_machine_credential_id: 1
+# Only needed for a private registry/package; use an existing Container Registry credential.
+# aap_registry_credential_id: 2
+# Copy the immutable reference from the successful build workflow's summary.
+phpdetect_ee_image: ghcr.io/hfenner/phpdetect-ee@sha256:REPLACE_WITH_PUBLISHED_DIGEST
+# Pin to a reviewed source commit for controlled rollouts, or track main.
+phpdetect_project_revision: main

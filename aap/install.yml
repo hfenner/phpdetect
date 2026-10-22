@@ -1,0 +1,101 @@
+---
+- name: Register phpdetect in AAP 2.7 without launching jobs
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    aap_token: '{{ lookup("ansible.builtin.env", "AAP_TOKEN") }}'
+    aap_api: '{{ aap_url | regex_replace("/$", "") }}/api/controller/v2'
+  module_defaults:
+    ansible.builtin.uri:
+      headers:
+        Authorization: 'Bearer {{ aap_token }}'
+      validate_certs: true
+      follow_redirects: none
+      body_format: json
+  tasks:
+    - name: Validate site-specific installation settings
+      ansible.builtin.assert:
+        that:
+          - aap_url is match('^https://[^/]+/?$')
+          - aap_token | length > 0
+          - aap_organization_id | int > 0
+          - aap_inventory_id | int > 0
+          - aap_machine_credential_id | int > 0
+          - phpdetect_ee_image is match('^.+@sha256:[a-f0-9]{64}$')
+          - not ansible_check_mode
+        fail_msg: Supply site variables, a gateway-issued AAP_TOKEN, and a published immutable image digest. This installer does not support check mode.
+      no_log: true
+    - name: Verify the target inventory contains php_targets
+      ansible.builtin.uri:
+        url: '{{ aap_api }}/inventories/{{ aap_inventory_id }}/groups/?name=php_targets'
+      register: target_groups
+      no_log: true
+    - name: Require a prepared inventory
+      ansible.builtin.assert:
+        that: target_groups.json.count == 1
+        fail_msg: Create php_targets in the existing AAP inventory and populate its hosts and runtime mappings first.
+    - name: Register the execution environment
+      ansible.builtin.include_tasks: resource.yml
+      vars:
+        resource_endpoint: execution_environments
+        resource_fact: installed_ee
+        resource_payload:
+          name: phpdetect EE
+          organization: '{{ aap_organization_id | int }}'
+          image: '{{ phpdetect_ee_image }}'
+          pull: always
+          credential: '{{ aap_registry_credential_id | default(none) }}'
+    - name: Register the Git project
+      ansible.builtin.include_tasks: resource.yml
+      vars:
+        resource_endpoint: projects
+        resource_fact: installed_project
+        resource_payload:
+          name: phpdetect
+          organization: '{{ aap_organization_id | int }}'
+          scm_type: git
+          scm_url: https://github.com/hfenner/phpdetect.git
+          scm_branch: '{{ phpdetect_project_revision | default("main") }}'
+          scm_update_on_launch: true
+          scm_clean: true
+          scm_delete_on_update: false
+    - name: Synchronize project content
+      ansible.builtin.uri:
+        url: '{{ aap_api }}/projects/{{ installed_project.id }}/update/'
+        method: POST
+        body: {}
+        status_code: 202
+      register: project_sync
+      no_log: true
+    - name: Wait for project synchronization
+      ansible.builtin.uri:
+        url: '{{ aap_api }}/project_updates/{{ project_sync.json.id }}/'
+      register: sync_state
+      until: sync_state.json.status in ['successful', 'failed', 'error', 'canceled']
+      retries: 60
+      delay: 5
+      no_log: true
+    - name: Require successful project synchronization
+      ansible.builtin.assert:
+        that: sync_state.json.status == 'successful'
+    - name: Register independent discovery and update templates
+      ansible.builtin.include_tasks: template.yml
+      loop:
+        - name: phpdetect - Discover
+          playbook: playbooks/discover.yml
+          job_type: run
+          survey: false
+        - name: phpdetect - Plan updates
+          playbook: playbooks/update.yml
+          job_type: check
+          survey: false
+        - name: phpdetect - Apply updates
+          playbook: playbooks/update.yml
+          job_type: run
+          survey: true
+      loop_control:
+        loop_var: template
+    - name: Report installed resources
+      ansible.builtin.debug:
+        msg: Registered EE, project, and three separate job templates. No discovery or update jobs were launched. Assign job-template permissions before use.

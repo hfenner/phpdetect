@@ -1,0 +1,33 @@
+---
+- name: Find the named resource in this organization
+  ansible.builtin.uri:
+    url: '{{ aap_api }}/{{ resource_endpoint }}/?name={{ resource_payload.name | urlencode }}&organization={{ aap_organization_id }}'
+  register: existing_resource
+  no_log: true
+- name: Reject ambiguous resource names
+  ansible.builtin.assert:
+    that: existing_resource.json.count <= 1
+- name: Create missing resource
+  ansible.builtin.uri:
+    url: '{{ aap_api }}/{{ resource_endpoint }}/'
+    method: POST
+    body: '{{ resource_payload }}'
+    status_code: 201
+  register: created_resource
+  when: existing_resource.json.count == 0
+  changed_when: true
+  no_log: true
+- name: Update changed resource settings
+  ansible.builtin.uri:
+    url: '{{ aap_api }}/{{ resource_endpoint }}/{{ existing_resource.json.results[0].id }}/'
+    method: PATCH
+    body: '{{ resource_payload }}'
+  when:
+    - existing_resource.json.count == 1
+    - existing_resource.json.results[0] | combine(resource_payload) != existing_resource.json.results[0]
+  changed_when: true
+  no_log: true
+- name: Remember the resource identity
+  ansible.builtin.set_fact:
+    '{{ resource_fact }}': '{{ created_resource.json if existing_resource.json.count == 0 else existing_resource.json.results[0] }}'
+  no_log: true

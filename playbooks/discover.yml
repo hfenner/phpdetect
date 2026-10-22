@@ -9,6 +9,16 @@
         prefix: phpdetect-discovery-
       register: phpdetect_run
       check_mode: false
+    - name: Seed AAP job artifacts before any target connection
+      ansible.builtin.set_stats:
+        per_host: false
+        aggregate: false
+        data:
+          phpdetect_discovery:
+            status: incomplete
+            patch_status: unknown
+            inventory_hosts: '{{ groups.php_targets | default([]) }}'
+      when: phpdetect_publish_job_artifacts | default(false) | bool
     - name: Load the bundled NCSC snapshot without network requests
       ansible.builtin.set_fact:
         ncsc_snapshot: '{{ lookup("ansible.builtin.file", playbook_dir ~ "/../data/ncsc/snapshot.json") | from_json }}'
@@ -87,6 +97,17 @@
           "affected_hosts": all_reports | default([]) | selectattr("patch_status", "equalto", "affected") | list | length}
           | to_nice_json }}
       check_mode: false
+    - name: Preserve discovery evidence in AAP job artifacts
+      ansible.builtin.set_stats:
+        per_host: false
+        aggregate: false
+        data:
+          phpdetect_discovery:
+            status: complete
+            hosts: '{{ all_reports | default([]) }}'
+            ncsc_commit: '{{ ncsc_snapshot.commit_sha }}'
+            scope_note: Unknown is not clearance; failed or excluded hosts retain unknown seeds.
+      when: phpdetect_publish_job_artifacts | default(false) | bool
     - name: Show private output directory
       ansible.builtin.debug:
         msg: >-

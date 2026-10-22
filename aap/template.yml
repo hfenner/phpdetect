@@ -1,0 +1,48 @@
+---
+- name: Register job template
+  ansible.builtin.include_tasks: resource.yml
+  vars:
+    resource_endpoint: job_templates
+    resource_fact: installed_template
+    resource_payload:
+      name: '{{ template.name }}'
+      organization: '{{ aap_organization_id | int }}'
+      project: '{{ installed_project.id }}'
+      inventory: '{{ aap_inventory_id | int }}'
+      execution_environment: '{{ installed_ee.id }}'
+      playbook: '{{ template.playbook }}'
+      job_type: '{{ template.job_type }}'
+      survey_enabled: '{{ template.survey }}'
+      ask_limit_on_launch: false
+      ask_variables_on_launch: false
+      ask_inventory_on_launch: false
+      allow_simultaneous: false
+      job_slice_count: 1
+      extra_vars: '{{ {"phpdetect_publish_job_artifacts": true} | to_json }}'
+- name: Attach the existing machine credential
+  ansible.builtin.uri:
+    url: '{{ aap_api }}/job_templates/{{ installed_template.id }}/credentials/'
+    method: POST
+    body:
+      id: '{{ aap_machine_credential_id | int }}'
+    status_code: 204
+  no_log: true
+- name: Require a change identifier when launching updates
+  ansible.builtin.uri:
+    url: '{{ aap_api }}/job_templates/{{ installed_template.id }}/survey_spec/'
+    method: POST
+    body:
+      name: Confirm the planned change
+      description: Must match phpdetect_update.change_id on every targeted host.
+      spec:
+        - question_name: Approved change ID
+          question_description: Enter the change ID from your reviewed host update plans.
+          required: true
+          type: text
+          variable: phpdetect_confirm_change
+          min: 1
+          max: 256
+          default: ''
+    status_code: 200
+  when: template.survey
+  no_log: true

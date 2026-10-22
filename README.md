@@ -4,6 +4,10 @@
 
 Executable Ansible automation for PHP2Shell discovery and separately invoked remediation. No exploit probes. Discovery never installs packages, changes configuration, or restarts managed services; Ansible uses its normal temporary module transport and writes private reports on the controller.
 
+## Ansible Automation Platform 2.7
+
+Use the [execution environment definition](execution-environment.yml), [build and publish workflow](.github/workflows/build-ee.yml), and [AAP installation playbook and settings](aap/README.md). The custom EE is published to `ghcr.io/hfenner/phpdetect-ee`; install with an immutable digest from a successful build. The installer creates separate discovery, update-plan, and apply-update job templates. AAP job artifacts preserve evidence after the execution container is removed.
+
 ## Run
 
 Requires Ansible Core 2.19+ on the controller, Ansible's supported Python runtime on managed Linux hosts, and SSH access. Run from this repository root so `ansible.cfg` loads the inventory defaults. The example inventory is intentionally empty. There are no project Python scripts or custom modules: collection, classification, updates, snapshot refresh, and tests are Ansible YAML tasks. A read-only Bash task uses Linux procfs and standard utilities to compare live executables and mapped files; it is embedded directly in the task file.

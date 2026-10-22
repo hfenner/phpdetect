@@ -178,6 +178,13 @@
           delegate_to: localhost
           become: false
           check_mode: false
+        - name: Preserve this host change result in AAP job artifacts
+          ansible.builtin.set_stats:
+            per_host: false
+            aggregate: true
+            data:
+              phpdetect_updates: '{{ {inventory_hostname: change_result | default({"progress": "blocked", "patch_status": "unknown"})} }}'
+          when: phpdetect_publish_job_artifacts | default(false) | bool
         - name: Show change report location
           ansible.builtin.debug:
             msg: 'Change evidence: {{ change_dir.path }}'
