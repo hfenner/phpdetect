@@ -1,0 +1,7 @@
+---
+- name: Parse inline Windows tasks without connecting to a host
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - ansible.builtin.import_tasks: ../playbooks/lab/native-windows.yml
+    - ansible.builtin.import_tasks: ../playbooks/tasks/collect-windows.yml

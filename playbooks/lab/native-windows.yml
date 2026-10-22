@@ -38,7 +38,7 @@
     $cgi = Get-WebConfigurationProperty -PSPath 'MACHINE/WEBROOT/APPHOST' -Filter 'system.webServer/fastCgi/application' -Name '.' | Where-Object { $_.fullPath -eq "$root\php-cgi.exe" }
     if (-not $cgi) { Add-WebConfigurationProperty -PSPath 'MACHINE/WEBROOT/APPHOST' -Filter 'system.webServer/fastCgi' -Name '.' -Value @{fullPath="$root\php-cgi.exe"} }
     New-Website -Name phpdetect -IPAddress 127.0.0.1 -Port 18080 -PhysicalPath $webroot -ApplicationPool phpdetect | Out-Null
-    New-WebHandler -Name PHP-FastCGI -Path '*.php' -Verb '*' -Modules FastCgiModule -ScriptProcessor "$root\php-cgi.exe" -ResourceType File -PSPath 'IIS:\' -Location phpdetect | Out-Null
+    New-WebHandler -Name PHP-FastCGI -Path '*.php' -Verb '*' -Modules FastCgiModule -ScriptProcessor "$root\php-cgi.exe" -ResourceType File -PSPath 'IIS:\Sites\phpdetect' | Out-Null
     Start-Website phpdetect
     $reply = Invoke-RestMethod 'http://127.0.0.1:18080/index.php'
     if ($reply.lab -ne 'phpdetect' -or $reply.php_version -ne $version) { throw 'Serving PHP verification failed' }
