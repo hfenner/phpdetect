@@ -1,0 +1,71 @@
+---
+- name: Register a completed native lab in an existing AAP discovery inventory
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    aap_api: '{{ aap_url | regex_replace("/$", "") }}/api/controller/v2'
+    aap_token: '{{ lookup("env", "AAP_TOKEN") }}'
+  module_defaults:
+    ansible.builtin.uri:
+      headers: {Authorization: 'Bearer {{ aap_token }}'}
+      validate_certs: true
+      body_format: json
+  tasks:
+    - name: Validate the target inventory and build job identifiers
+      ansible.builtin.assert:
+        that:
+          - aap_url is match('^https://')
+          - aap_token | length > 0
+          - aap_inventory_id | int > 0
+          - aap_native_build_job_id | int > 0
+      no_log: true
+    - name: Read the native lab build artifacts
+      ansible.builtin.uri:
+        url: '{{ aap_api }}/jobs/{{ aap_native_build_job_id | int }}/'
+      register: native_job
+      no_log: true
+    - name: Require a successfully verified native lab
+      ansible.builtin.assert:
+        that:
+          - native_job.json.status == 'successful'
+          - native_job.json.playbook == 'playbooks/build-native-lab-aws.yml'
+          - native_job.json.artifacts.phpdetect_native_lab.status == 'ready'
+    - name: Prepare the two native inventory records
+      ansible.builtin.set_fact:
+        native_target_definitions:
+          - name: 'phpdetect-rhel-{{ native_job.json.artifacts.phpdetect_native_lab.stack | regex_replace("^phpdetect-native-", "") }}'
+            variables:
+              ansible_host: '{{ native_job.json.artifacts.phpdetect_native_lab.outputs.RhelPublicIp }}'
+              ansible_user: ec2-user
+              ansible_python_interpreter: /usr/bin/python3
+              ansible_ssh_common_args: -o StrictHostKeyChecking=accept-new
+              phpdetect_become: true
+              phpdetect_runtimes:
+                - id: rhel-native-fpm
+                  artifact: /usr/sbin/php-fpm
+                  exposure: internal
+                  sites: ['http://127.0.0.1:18080/index.php']
+                  evidence: {}
+          - name: 'phpdetect-windows-{{ native_job.json.artifacts.phpdetect_native_lab.stack | regex_replace("^phpdetect-native-", "") }}'
+            variables:
+              ansible_host: '{{ native_job.json.artifacts.phpdetect_native_lab.outputs.WindowsPublicIp }}'
+              ansible_user: Administrator
+              ansible_connection: ssh
+              ansible_shell_type: powershell
+              ansible_ssh_common_args: -o StrictHostKeyChecking=accept-new
+              phpdetect_become: false
+    - name: Find the discovery group
+      ansible.builtin.uri:
+        url: '{{ aap_api }}/inventories/{{ aap_inventory_id | int }}/groups/?name=php_targets'
+      register: native_group
+      no_log: true
+    - name: Require the intended inventory to have its discovery group
+      ansible.builtin.assert:
+        that: native_group.json.count == 1
+    - name: Register each dedicated target
+      ansible.builtin.include_tasks: native-target.yml
+      loop: '{{ native_target_definitions }}'
+      loop_control:
+        loop_var: native_target
+        label: '{{ native_target.name }}'

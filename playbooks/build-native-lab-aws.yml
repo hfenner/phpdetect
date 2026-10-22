@@ -190,6 +190,20 @@
   - ansible.builtin.set_fact:
       native_public_key: '{{ native_agent.stdout | regex_search(''^[^ ]+ [A-Za-z0-9+/=]+'') }}'
     no_log: true
+  - name: Verify the EC2 key matches the attached AAP machine identity
+    amazon.aws.ec2_key_info:
+      region: '{{ phpdetect_lab_region }}'
+      filters:
+        key-name: '{{ phpdetect_lab_key_name }}'
+      include_public_key: true
+    register: native_ec2_key
+    no_log: true
+  - name: Require the same key for Linux and Windows SSH
+    ansible.builtin.assert:
+      that:
+        - native_ec2_key.keypairs | length == 1
+        - (native_ec2_key.keypairs[0].public_key | regex_search('^[^ ]+ [A-Za-z0-9+/=]+')) == native_public_key
+    no_log: true
   - name: Read any existing native lab stack
     amazon.aws.cloudformation_info:
       stack_name: '{{ native_stack_name }}'

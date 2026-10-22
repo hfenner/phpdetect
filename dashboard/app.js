@@ -13,7 +13,7 @@ function normalize(input) {
     for (const r of array(h.runtimes)) {
       const pkg = h.php_packages?.[r.package_owner];
       const version = pkg?.version || pkg?.Version || (typeof pkg==='string' ? pkg : '') || r.version || r.evidence?.packages?.[r.package_owner] || 'Not recorded';
-      rows.push({...common,id:text(r.id || r.artifact || 'Mapped runtime'),kind:'Mapped runtime',version:text(version),status:statusOf(r.patch_status),exposure:['internet','internal'].includes(r.exposure)?r.exposure:'unknown',reason:r.reason || 'No assessment reason recorded',evidence:r});
+      rows.push({...common,id:text(r.id || r.artifact || 'Mapped runtime'),kind:h.platform==='Windows'?'Native executable':'Mapped runtime',version:text(version),status:statusOf(r.patch_status),exposure:['internet','internal'].includes(r.exposure)?r.exposure:'unknown',reason:r.reason || 'No assessment reason recorded',evidence:r});
     }
     for (const c of array(h.containers)) {
       const evidence=array(h.container_cli_evidence).find(e=>e.container_id===c.id);

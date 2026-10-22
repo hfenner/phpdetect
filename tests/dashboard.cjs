@@ -13,3 +13,6 @@ assert.equal(normalize({hosts:[{host:'empty',patch_status:'patched'}]}).rows[0].
 assert.throws(()=>normalize({fixtures:[]}),/discovery report/);
 assert.equal(esc('<img src=x onerror=alert(1)>'),'&lt;img src=x onerror=alert(1)&gt;');
 console.log('Dashboard evidence handling checks passed.');
+const windows=normalize({hosts:[{host:'windows01',platform:'Windows',patch_status:'unknown',runtimes:[{id:'C:\\PHP\\php-cgi.exe',version:'8.4.27',patch_status:'unknown'}]}]});
+assert.equal(windows.rows[0].version,'8.4.27');
+assert.equal(windows.rows[0].status,'unknown');

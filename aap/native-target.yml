@@ -1,0 +1,32 @@
+---
+- name: Find the target in the specified inventory
+  ansible.builtin.uri:
+    url: '{{ aap_api }}/inventories/{{ aap_inventory_id | int }}/hosts/?name={{ native_target.name | urlencode }}'
+  register: native_host
+  no_log: true
+- name: Refuse ambiguous or unrelated host records
+  ansible.builtin.assert:
+    that:
+      - native_host.json.count <= 1
+      - native_host.json.count == 0 or native_host.json.results[0].description == 'Managed by phpdetect native lab'
+- name: Create or refresh the managed host
+  ansible.builtin.uri:
+    url: >-
+      {{ aap_api ~ '/inventories/' ~ (aap_inventory_id | int | string) ~ '/hosts/'
+      if native_host.json.count == 0 else aap_api ~ '/hosts/' ~ (native_host.json.results[0].id | string) ~ '/' }}
+    method: '{{ "POST" if native_host.json.count == 0 else "PATCH" }}'
+    body:
+      name: '{{ native_target.name }}'
+      description: Managed by phpdetect native lab
+      enabled: true
+      variables: '{{ native_target.variables | to_json }}'
+    status_code: [200, 201]
+  register: native_host_saved
+  no_log: true
+- name: Include the native VM in discovery scope
+  ansible.builtin.uri:
+    url: '{{ aap_api }}/groups/{{ native_group.json.results[0].id }}/hosts/'
+    method: POST
+    body: {id: '{{ native_host_saved.json.id }}'}
+    status_code: 204
+  no_log: true
