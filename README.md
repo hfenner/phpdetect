@@ -1,3 +1,5 @@
+> **Unofficial proof of concept:** This repository is not official vendor-provided code. It is an independent proof of concept (PoC) demonstrating how Ansible can be used to detect PHP installations.
+
 # phpdetect
 
 Executable Ansible automation for PHP2Shell discovery and separately invoked remediation. No exploit probes. Discovery never installs packages, changes configuration, or restarts managed services; Ansible uses its normal temporary module transport and writes private reports on the controller.
