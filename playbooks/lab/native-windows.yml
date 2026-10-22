@@ -1,0 +1,53 @@
+---
+- name: Install official native PHP and configure loopback IIS FastCGI
+  ansible.builtin.raw: |
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $root = 'C:\PHP'
+    $version = '8.4.27'
+    $sha256 = '93bd8a815a52156606fb906d0573437908c61f96e2cc52c03a51e36a41bf5236'
+    $zip = 'C:\ProgramData\phpdetect-php.zip'
+    New-Item -ItemType Directory -Path $root -Force | Out-Null
+    if (-not (Test-Path "$root\php-cgi.exe")) {
+      Invoke-WebRequest 'https://downloads.php.net/~windows/releases/php-8.4.27-nts-Win32-vs17-x64.zip' -OutFile $zip -UseBasicParsing
+      if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() -ne $sha256) { throw 'PHP archive checksum mismatch' }
+      Expand-Archive $zip -DestinationPath $root -Force
+    }
+    $vc = 'C:\ProgramData\phpdetect-vcredist.exe'
+    if (-not (Test-Path 'C:\Windows\System32\vcruntime140.dll')) {
+      Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $vc -UseBasicParsing
+      $sig = Get-AuthenticodeSignature $vc
+      if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw 'Invalid Microsoft redistributable signature' }
+      $install = Start-Process $vc -ArgumentList '/install /quiet /norestart' -Wait -PassThru
+      if ($install.ExitCode -notin @(0,3010,1638)) { throw "VC install failed: $($install.ExitCode)" }
+    }
+    $actual = & "$root\php.exe" -n -r 'echo PHP_VERSION;'
+    if ($LASTEXITCODE -ne 0 -or $actual -ne $version) { throw "Unexpected PHP runtime: $actual" }
+    Install-WindowsFeature Web-Server,Web-CGI -IncludeManagementTools | Out-Null
+    Import-Module WebAdministration
+    if (Test-Path 'IIS:\Sites\Default Web Site') { Remove-Website -Name 'Default Web Site' }
+    if (Test-Path 'IIS:\Sites\phpdetect') { Remove-Website -Name phpdetect }
+    $webroot = 'C:\inetpub\phpdetect'
+    New-Item -ItemType Directory -Path $webroot -Force | Out-Null
+    Set-Content "$webroot\index.php" '<?php header("Content-Type: application/json"); echo json_encode(["lab" => "phpdetect", "platform" => "Windows", "php_version" => PHP_VERSION]);' -Encoding ascii
+    icacls $root /grant '*S-1-5-32-568:(OI)(CI)RX' /T | Out-Null
+    icacls $webroot /grant '*S-1-5-32-568:(OI)(CI)RX' '*S-1-5-17:(OI)(CI)RX' /T | Out-Null
+    if (-not (Test-Path 'IIS:\AppPools\phpdetect')) { New-WebAppPool -Name phpdetect | Out-Null }
+    Set-ItemProperty 'IIS:\AppPools\phpdetect' -Name managedRuntimeVersion -Value ''
+    $cgi = Get-WebConfigurationProperty -PSPath 'MACHINE/WEBROOT/APPHOST' -Filter 'system.webServer/fastCgi/application' -Name '.' | Where-Object { $_.fullPath -eq "$root\php-cgi.exe" }
+    if (-not $cgi) { Add-WebConfigurationProperty -PSPath 'MACHINE/WEBROOT/APPHOST' -Filter 'system.webServer/fastCgi' -Name '.' -Value @{fullPath="$root\php-cgi.exe"} }
+    New-Website -Name phpdetect -IPAddress 127.0.0.1 -Port 18080 -PhysicalPath $webroot -ApplicationPool phpdetect | Out-Null
+    New-WebHandler -Name PHP-FastCGI -Path '*.php' -Verb '*' -Modules FastCgiModule -ScriptProcessor "$root\php-cgi.exe" -ResourceType File -PSPath 'IIS:\' -Location phpdetect | Out-Null
+    Start-Website phpdetect
+    $reply = Invoke-RestMethod 'http://127.0.0.1:18080/index.php'
+    if ($reply.lab -ne 'phpdetect' -or $reply.php_version -ne $version) { throw 'Serving PHP verification failed' }
+    $reply | ConvertTo-Json -Compress
+  register: native_windows_install
+- name: Confirm Windows is serving PHP through IIS
+  ansible.builtin.assert:
+    that:
+      - native_windows_install.rc == 0
+      - "'8.4.27' in native_windows_install.stdout"
+- ansible.builtin.set_fact:
+    native_fixture_ready: true

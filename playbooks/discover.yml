@@ -56,6 +56,13 @@
           no_log: true
       vars:
         assessment_runtimes: '{{ phpdetect_runtimes | default([]) }}'
+      when: ansible_shell_type | default('sh') != 'powershell'
+    - name: Collect native Windows PHP evidence
+      ansible.builtin.include_tasks:
+        file: tasks/collect-windows.yml
+        apply:
+          no_log: true
+      when: ansible_shell_type | default('sh') == 'powershell'
     - name: Build product candidate matches without treating matches as clearance
       ansible.builtin.set_fact:
         product_matches: >-
@@ -68,7 +75,7 @@
       ansible.builtin.copy:
         dest: '{{ hostvars.localhost.phpdetect_run.path }}/{{ inventory_hostname | hash("sha256") }}.json'
         mode: '0600'
-        content: '{{ assessment_report | combine({"host": inventory_hostname, "products": product_matches | default([])}) | to_nice_json }}'
+        content: '{{ assessment_report | combine({"host": inventory_hostname, "address": ansible_host | default(inventory_hostname), "products": product_matches | default([])}) | to_nice_json }}'
       delegate_to: localhost
       become: false
       check_mode: false

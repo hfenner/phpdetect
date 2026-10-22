@@ -153,4 +153,4 @@
             templates: '{{ lab_installed_templates }}'
     - name: Report setup completion
       ansible.builtin.debug:
-        msg: Installed phpdetect - Build AWS lab and phpdetect - Destroy AWS lab. Launch Build AWS lab with its survey to create EC2 resources. No AWS jobs were launched by this installer.
+        msg: Installed independent container and native Windows/RHEL lab build and teardown templates. Launch the selected build template with its survey to create EC2 resources. No AWS jobs were launched by this installer.

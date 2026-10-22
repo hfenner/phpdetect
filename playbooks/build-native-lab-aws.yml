@@ -1,0 +1,332 @@
+- name: Provision native PHP VMs on AWS
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    native_stack_name: phpdetect-native-{{ phpdetect_lab_id }}
+    native_windows_bootstrap: |-
+      <powershell>
+      $ErrorActionPreference = 'Stop'
+      Start-Transcript -Path C:\ProgramData\phpdetect-bootstrap.log -Append
+      Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+      New-ItemProperty -Path HKLM:\SOFTWARE\OpenSSH -Name DefaultShell -Value C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -PropertyType String -Force
+      New-Item -ItemType Directory -Path C:\ProgramData\ssh -Force | Out-Null
+      Set-Content C:\ProgramData\ssh\administrators_authorized_keys '{{ native_public_key }}' -Encoding ascii
+      icacls C:\ProgramData\ssh\administrators_authorized_keys /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F'
+      if ($LASTEXITCODE -ne 0) { throw 'Cannot secure authorized keys' }
+      Start-Service sshd
+      $config = Get-Content C:\ProgramData\ssh\sshd_config -Raw
+      $config = $config -replace '(?m)^#?PasswordAuthentication .*$', 'PasswordAuthentication no'
+      $config = $config -replace '(?m)^#?PubkeyAuthentication .*$', 'PubkeyAuthentication yes'
+      Set-Content C:\ProgramData\ssh\sshd_config $config -Encoding ascii
+      Set-Service sshd -StartupType Automatic
+      Restart-Service sshd
+      if (-not (Get-NetFirewallRule -Name OpenSSH-Server-In-TCP -ErrorAction SilentlyContinue)) {
+        New-NetFirewallRule -Name OpenSSH-Server-In-TCP -DisplayName 'OpenSSH SSH Server' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22
+      }
+      Stop-Transcript
+      </powershell>
+    native_stack_template:
+      AWSTemplateFormatVersion: '2010-09-09'
+      Description: Disposable native PHP RHEL and Windows lab; restricted SSH and loopback HTTP only
+      Parameters:
+        KeyName:
+          Type: AWS::EC2::KeyPair::KeyName
+        SshCidr:
+          Type: String
+        RhelAmi:
+          Type: AWS::EC2::Image::Id
+        WindowsAmi:
+          Type: AWS::EC2::Image::Id
+      Resources:
+        Vpc:
+          Type: AWS::EC2::VPC
+          Properties:
+            CidrBlock: 10.78.0.0/16
+            EnableDnsSupport: true
+            EnableDnsHostnames: true
+        Gateway:
+          Type: AWS::EC2::InternetGateway
+        GatewayAttachment:
+          Type: AWS::EC2::VPCGatewayAttachment
+          Properties:
+            VpcId:
+              Ref: Vpc
+            InternetGatewayId:
+              Ref: Gateway
+        Subnet:
+          Type: AWS::EC2::Subnet
+          Properties:
+            VpcId:
+              Ref: Vpc
+            CidrBlock: 10.78.1.0/24
+            MapPublicIpOnLaunch: true
+        Routes:
+          Type: AWS::EC2::RouteTable
+          Properties:
+            VpcId:
+              Ref: Vpc
+        InternetRoute:
+          Type: AWS::EC2::Route
+          DependsOn: GatewayAttachment
+          Properties:
+            RouteTableId:
+              Ref: Routes
+            DestinationCidrBlock: 0.0.0.0/0
+            GatewayId:
+              Ref: Gateway
+        RouteAssociation:
+          Type: AWS::EC2::SubnetRouteTableAssociation
+          Properties:
+            SubnetId:
+              Ref: Subnet
+            RouteTableId:
+              Ref: Routes
+        SecurityGroup:
+          Type: AWS::EC2::SecurityGroup
+          Properties:
+            GroupDescription: SSH from the specified AAP execution-node egress only
+            VpcId:
+              Ref: Vpc
+            SecurityGroupIngress:
+            - IpProtocol: tcp
+              FromPort: 22
+              ToPort: 22
+              CidrIp:
+                Ref: SshCidr
+            SecurityGroupEgress:
+            - IpProtocol: '-1'
+              CidrIp: 0.0.0.0/0
+        Rhel:
+          Type: AWS::EC2::Instance
+          DependsOn: InternetRoute
+          Properties:
+            ImageId:
+              Ref: RhelAmi
+            InstanceType: t3.medium
+            KeyName:
+              Ref: KeyName
+            SubnetId:
+              Ref: Subnet
+            SecurityGroupIds:
+            - Ref: SecurityGroup
+            MetadataOptions:
+              HttpTokens: required
+              HttpPutResponseHopLimit: 1
+            BlockDeviceMappings:
+            - DeviceName: /dev/sda1
+              Ebs:
+                VolumeSize: 20
+                VolumeType: gp3
+                Encrypted: true
+                DeleteOnTermination: true
+            Tags:
+            - Key: Name
+              Value:
+                Fn::Sub: ${AWS::StackName}-rhel
+            - Key: ManagedBy
+              Value: phpdetect-native-lab
+        Windows:
+          Type: AWS::EC2::Instance
+          DependsOn: InternetRoute
+          Properties:
+            ImageId:
+              Ref: WindowsAmi
+            InstanceType: t3.medium
+            KeyName:
+              Ref: KeyName
+            SubnetId:
+              Ref: Subnet
+            SecurityGroupIds:
+            - Ref: SecurityGroup
+            MetadataOptions:
+              HttpTokens: required
+              HttpPutResponseHopLimit: 1
+            BlockDeviceMappings:
+            - DeviceName: /dev/sda1
+              Ebs:
+                VolumeSize: 50
+                VolumeType: gp3
+                Encrypted: true
+                DeleteOnTermination: true
+            Tags:
+            - Key: Name
+              Value:
+                Fn::Sub: ${AWS::StackName}-windows
+            - Key: ManagedBy
+              Value: phpdetect-native-lab
+            UserData:
+              Fn::Base64: '{{ native_windows_bootstrap }}'
+      Outputs:
+        RhelPublicIp:
+          Value:
+            Fn::GetAtt:
+            - Rhel
+            - PublicIp
+        RhelInstanceId:
+          Value:
+            Ref: Rhel
+        WindowsPublicIp:
+          Value:
+            Fn::GetAtt:
+            - Windows
+            - PublicIp
+        WindowsInstanceId:
+          Value:
+            Ref: Windows
+  tasks:
+  - name: Validate the explicitly authorized lab inputs
+    ansible.builtin.include_tasks: lab/validate.yml
+  - name: Read the AAP machine public key
+    ansible.builtin.command: ssh-add -L
+    register: native_agent
+    changed_when: false
+    no_log: true
+  - ansible.builtin.assert:
+      that:
+      - native_agent.stdout_lines | length == 1
+      - native_agent.stdout is match('^(ssh-rsa|ssh-ed25519) ')
+    no_log: true
+  - ansible.builtin.set_fact:
+      native_public_key: '{{ native_agent.stdout | regex_search(''^[^ ]+ [A-Za-z0-9+/=]+'') }}'
+    no_log: true
+  - name: Read any existing native lab stack
+    amazon.aws.cloudformation_info:
+      stack_name: '{{ native_stack_name }}'
+      region: '{{ phpdetect_lab_region }}'
+    register: native_existing
+  - name: Reject stacks belonging to another application
+    ansible.builtin.assert:
+      that:
+      - native_existing.cloudformation[native_stack_name].stack_tags.ManagedBy == 'phpdetect-native-lab'
+      - native_existing.cloudformation[native_stack_name].stack_tags.LabId == phpdetect_lab_id
+    when: native_stack_name in native_existing.cloudformation
+  - name: Find official Red Hat RHEL 9 images
+    amazon.aws.ec2_ami_info:
+      region: '{{ phpdetect_lab_region }}'
+      owners:
+      - '309956199498'
+      filters:
+        name: RHEL-9*_HVM-*-x86_64-*-Hourly2-GP3
+        architecture: x86_64
+        state: available
+        root-device-type: ebs
+        virtualization-type: hvm
+    register: native_rhel_images
+  - name: Find official Windows Server 2022 images
+    amazon.aws.ec2_ami_info:
+      region: '{{ phpdetect_lab_region }}'
+      owners:
+      - amazon
+      filters:
+        name: Windows_Server-2022-English-Full-Base-*
+        architecture: x86_64
+        state: available
+        root-device-type: ebs
+    register: native_windows_images
+  - ansible.builtin.assert:
+      that:
+      - native_rhel_images.images | length > 0
+      - native_windows_images.images | length > 0
+  - name: Reuse installed AMIs on subsequent builds
+    ansible.builtin.set_fact:
+      native_parameters: '{{ native_existing.cloudformation.get(native_stack_name, {}).get("stack_parameters", {}) }}'
+  - name: Create the dedicated native lab stack
+    amazon.aws.cloudformation:
+      region: '{{ phpdetect_lab_region }}'
+      stack_name: '{{ native_stack_name }}'
+      state: present
+      template_body: '{{ native_stack_template | to_json }}'
+      template_parameters:
+        KeyName: '{{ phpdetect_lab_key_name }}'
+        SshCidr: '{{ phpdetect_lab_ssh_cidr }}'
+        RhelAmi: '{{ native_parameters.RhelAmi | default((native_rhel_images.images | sort(attribute="creation_date") | last).image_id)
+          }}'
+        WindowsAmi: '{{ native_parameters.WindowsAmi | default((native_windows_images.images | sort(attribute="creation_date")
+          | last).image_id) }}'
+      tags:
+        ManagedBy: phpdetect-native-lab
+        LabId: '{{ phpdetect_lab_id }}'
+        Purpose: Disposable native PHP fixtures
+    register: native_stack
+  - name: Preserve instance identities before guest configuration
+    ansible.builtin.set_stats:
+      aggregate: false
+      data:
+        phpdetect_native_lab:
+          stack: '{{ native_stack_name }}'
+          region: '{{ phpdetect_lab_region }}'
+          status: provisioning
+          outputs: '{{ native_stack.stack_outputs }}'
+  - name: Add the RHEL target
+    ansible.builtin.add_host:
+      name: phpdetect-rhel-{{ phpdetect_lab_id }}
+      groups:
+      - phpdetect_native_rhel
+      - php_targets
+      ansible_host: '{{ native_stack.stack_outputs.RhelPublicIp }}'
+      ansible_user: ec2-user
+      ansible_python_interpreter: /usr/bin/python3
+      ansible_ssh_common_args: -o StrictHostKeyChecking=accept-new
+      phpdetect_become: true
+      phpdetect_runtimes:
+      - id: rhel-native-fpm
+        artifact: /usr/sbin/php-fpm
+        exposure: internal
+        sites:
+        - http://127.0.0.1:18080/
+        evidence: {}
+  - name: Add the Windows target
+    ansible.builtin.add_host:
+      name: phpdetect-windows-{{ phpdetect_lab_id }}
+      groups:
+      - phpdetect_native_windows
+      - php_targets
+      ansible_host: '{{ native_stack.stack_outputs.WindowsPublicIp }}'
+      ansible_user: Administrator
+      ansible_connection: ssh
+      ansible_shell_type: powershell
+      ansible_ssh_common_args: -o StrictHostKeyChecking=accept-new
+      phpdetect_become: false
+- name: Install native PHP on RHEL
+  hosts: phpdetect_native_rhel
+  gather_facts: false
+  become: true
+  tasks:
+  - name: Wait for RHEL SSH
+    ansible.builtin.wait_for_connection:
+      timeout: 600
+  - ansible.builtin.include_tasks: lab/native-rhel.yml
+- name: Install native PHP on Windows
+  hosts: phpdetect_native_windows
+  gather_facts: false
+  tasks:
+  - name: Wait for Windows SSH port from the controller
+    ansible.builtin.wait_for:
+      host: '{{ ansible_host }}'
+      port: 22
+      timeout: 1200
+    delegate_to: localhost
+    vars:
+      ansible_shell_type: sh
+  - name: Verify Windows SSH authentication
+    ansible.builtin.raw: Write-Output 'phpdetect-connected'
+    changed_when: false
+  - ansible.builtin.include_tasks: lab/native-windows.yml
+- name: Publish native lab readiness
+  hosts: localhost
+  gather_facts: false
+  tasks:
+  - name: Require both platform fixtures to be verified
+    ansible.builtin.assert:
+      that:
+      - hostvars['phpdetect-rhel-' ~ phpdetect_lab_id].native_fixture_ready | default(false)
+      - hostvars['phpdetect-windows-' ~ phpdetect_lab_id].native_fixture_ready | default(false)
+  - ansible.builtin.set_stats:
+      aggregate: false
+      data:
+        phpdetect_native_lab:
+          stack: phpdetect-native-{{ phpdetect_lab_id }}
+          region: '{{ phpdetect_lab_region }}'
+          status: ready
+          outputs: '{{ native_stack.stack_outputs }}'

@@ -44,3 +44,10 @@
           {{ lab_common_survey + [
           {'question_name': 'Confirm lab deletion', 'question_description': 'Retype the Lab ID. Removes that lab stack, instance, disk and network.',
            'variable': 'phpdetect_lab_destroy_confirm', 'type': 'text', 'required': true, 'min': 1, 'max': 31, 'default': ''}] }}
+
+- name: Add independent native Windows and RHEL lab templates
+  ansible.builtin.set_fact:
+    lab_template_definitions: >-
+      {{ lab_template_definitions + [
+      lab_template_definitions[0] | combine({'name': 'phpdetect - Build native AWS lab', 'playbook': 'playbooks/build-native-lab-aws.yml'}),
+      lab_template_definitions[1] | combine({'name': 'phpdetect - Destroy native AWS lab', 'playbook': 'playbooks/destroy-native-lab-aws.yml'})] }}

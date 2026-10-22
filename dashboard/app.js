@@ -12,7 +12,7 @@ function normalize(input) {
     const common = {host, hostStatus, address: h.address || lab.discovery_inventory?.all?.children?.php_targets?.hosts?.[host]?.ansible_host || 'Not recorded', hostEvidence:h};
     for (const r of array(h.runtimes)) {
       const pkg = h.php_packages?.[r.package_owner];
-      const version = pkg?.version || pkg?.Version || (typeof pkg==='string' ? pkg : '') || r.evidence?.packages?.[r.package_owner] || 'Not recorded';
+      const version = pkg?.version || pkg?.Version || (typeof pkg==='string' ? pkg : '') || r.version || r.evidence?.packages?.[r.package_owner] || 'Not recorded';
       rows.push({...common,id:text(r.id || r.artifact || 'Mapped runtime'),kind:'Mapped runtime',version:text(version),status:statusOf(r.patch_status),exposure:['internet','internal'].includes(r.exposure)?r.exposure:'unknown',reason:r.reason || 'No assessment reason recorded',evidence:r});
     }
     for (const c of array(h.containers)) {

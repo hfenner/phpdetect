@@ -47,6 +47,9 @@ jobs:
             ansible-playbook tests/lab-aap.yml
             ansible-playbook playbooks/build-lab-aws.yml --syntax-check
             ansible-playbook playbooks/destroy-lab-aws.yml --syntax-check
+            ansible-playbook playbooks/build-native-lab-aws.yml --syntax-check
+            ansible-playbook playbooks/destroy-native-lab-aws.yml --syntax-check
+            ansible-playbook tests/native-lab.yml
             ansible-playbook tests/lab.yml
             ansible-runner run /runner --project-dir /runner/project --inventory /runner/project/tests/local.yml --artifact-dir /tmp/phpdetect-runner --ident smoke -p playbooks/discover.yml --cmdline "-e phpdetect_publish_job_artifacts=true"
             ansible-playbook tests/aap-artifacts.yml

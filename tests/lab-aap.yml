@@ -11,11 +11,14 @@
     - name: Verify independent jobs and credential scope
       ansible.builtin.assert:
         that:
-          - lab_template_definitions | length == 2
+          - lab_template_definitions | length == 4
           - lab_template_definitions[0].playbook == 'playbooks/build-lab-aws.yml'
           - lab_template_definitions[1].playbook == 'playbooks/destroy-lab-aws.yml'
           - lab_template_definitions[0].credential_ids | sort == [21, 34]
           - lab_template_definitions[1].credential_ids == [21]
+          - lab_template_definitions[2].playbook == 'playbooks/build-native-lab-aws.yml'
+          - lab_template_definitions[3].playbook == 'playbooks/destroy-native-lab-aws.yml'
+          - lab_template_definitions[3].credential_ids == [21]
           - "'phpdetect_lab_confirm' in (lab_template_definitions[0].survey | map(attribute='variable') | list)"
           - "'phpdetect_lab_destroy_confirm' in (lab_template_definitions[1].survey | map(attribute='variable') | list)"
           - "'phpdetect_lab_confirm' not in (lab_template_definitions[1].survey | map(attribute='variable') | list)"

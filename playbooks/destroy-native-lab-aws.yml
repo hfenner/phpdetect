@@ -1,0 +1,38 @@
+---
+- name: Remove only the named phpdetect lab CloudFormation stack
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Require the specific lab ID to be confirmed for deletion
+      ansible.builtin.assert:
+        that:
+          - phpdetect_lab_id | default('') is match('^[a-z][a-z0-9-]{0,30}$')
+          - phpdetect_lab_destroy_confirm | default('') == phpdetect_lab_id | default('missing')
+          - phpdetect_lab_region | default('') | length > 0
+          - not ansible_check_mode
+    - name: Inspect the exact stack before deleting it
+      amazon.aws.cloudformation_info:
+        stack_name: 'phpdetect-native-{{ phpdetect_lab_id }}'
+        region: '{{ phpdetect_lab_region }}'
+      register: lab_existing
+    - name: Validate stack ownership
+      ansible.builtin.assert:
+        that:
+          - lab_existing.cloudformation['phpdetect-native-' ~ phpdetect_lab_id].stack_tags.ManagedBy == 'phpdetect-native-lab'
+          - lab_existing.cloudformation['phpdetect-native-' ~ phpdetect_lab_id].stack_tags.LabId == phpdetect_lab_id
+      when: "('phpdetect-native-' ~ phpdetect_lab_id) in lab_existing.cloudformation"
+    - name: Delete the stack and its disposable VM disk and network
+      amazon.aws.cloudformation:
+        stack_name: 'phpdetect-native-{{ phpdetect_lab_id }}'
+        region: '{{ phpdetect_lab_region }}'
+        state: absent
+      when: "('phpdetect-native-' ~ phpdetect_lab_id) in lab_existing.cloudformation"
+    - name: Report teardown
+      ansible.builtin.set_stats:
+        per_host: false
+        aggregate: false
+        data:
+          phpdetect_lab:
+            stack: 'phpdetect-native-{{ phpdetect_lab_id }}'
+            status: removed

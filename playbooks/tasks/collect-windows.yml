@@ -1,0 +1,38 @@
+---
+- name: Collect native Windows PHP file, process, and IIS evidence without executing candidate binaries
+  ansible.builtin.raw: |
+    $ErrorActionPreference = 'Stop'
+    $gaps = [System.Collections.Generic.List[string]]::new()
+    $processes = @(Get-CimInstance Win32_Process -Filter "Name = 'php.exe' OR Name = 'php-cgi.exe'" | Select-Object ProcessId,Name,ExecutablePath)
+    $files = [System.Collections.Generic.List[string]]::new()
+    foreach ($p in $processes) { if ($p.ExecutablePath) { $files.Add($p.ExecutablePath) } else { $gaps.Add('A PHP process executable path was inaccessible') } }
+    foreach ($root in @('C:\PHP','C:\Program Files\PHP','C:\Program Files (x86)\PHP','C:\tools\php','C:\xampp\php')) {
+      if (Test-Path $root) {
+        try { Get-ChildItem $root -Filter 'php*.exe' -File -Recurse -Depth 2 -ErrorAction Stop | ForEach-Object { $files.Add($_.FullName) } }
+        catch { $gaps.Add("Cannot enumerate $root") }
+      }
+    }
+    $sites = @()
+    if (Get-Module -ListAvailable WebAdministration) {
+      try {
+        Import-Module WebAdministration
+        $sites = @(Get-Website | ForEach-Object { @{name=$_.Name;path=$_.PhysicalPath;bindings=@($_.Bindings.Collection | ForEach-Object { $_.bindingInformation })} })
+      } catch { $gaps.Add('IIS configuration could not be read') }
+    }
+    $runtimes = @($files | Sort-Object -Unique | ForEach-Object {
+      $path = $_
+      try {
+        $f = Get-Item -LiteralPath $path
+        $live = @($processes | Where-Object { $_.ExecutablePath -eq $path } | ForEach-Object { @{pid=$_.ProcessId;executable=$_.ExecutablePath} })
+        @{id=$path;artifact=$path;version=$f.VersionInfo.ProductVersion;package_owner='';patch_status='unknown';exposure='unknown';priority='P1';running_build_verified=$false;processes=$live;sites=@();evidence=@{sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLower();file_version=$f.VersionInfo.FileVersion};reason='Native Windows PHP found. Vendor patch evidence, serving-site mapping, and loaded-build identity are not verified.'}
+      } catch { $gaps.Add("Cannot inspect $path") }
+    })
+    $gaps.Add('Windows discovery covers running PHP executables and common installation paths only; bundled products and arbitrary paths may be missed')
+    $os = Get-CimInstance Win32_OperatingSystem
+    @{platform='Windows';os_release=@{ID='windows';VERSION_ID=$os.Version;PRETTY_NAME=$os.Caption};package_manager='unknown';php_packages=@{};runtimes=$runtimes;containers=@();container_cli_evidence=@();products=@();routing_hints=$sites;patch_status='unknown';gaps=@($gaps.ToArray());scope_note='Windows native file/process inventory is evidence only; it does not establish patch status or complete host coverage.'} | ConvertTo-Json -Depth 12 -Compress
+  register: windows_php_evidence
+  changed_when: false
+  check_mode: false
+- name: Preserve the Windows assessment in the common report schema
+  ansible.builtin.set_fact:
+    assessment_report: '{{ windows_php_evidence.stdout | trim | from_json }}'
