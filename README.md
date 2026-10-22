@@ -74,3 +74,7 @@ ansible-playbook -i tests/local.yml playbooks/discover.yml
 The local integration inventory runs discovery only; it never authorizes updates. Nineteen Ansible policy cases exercise the actual classification task, including vendor backports, stale worker evidence, missing permissions/CVEs, OS mismatches, unknown results, and the reason text that names blocking processes. Package parsing tests verify exact Debian/RPM revisions and check the embedded Bash task's syntax. Procfs collection requires Linux; a non-Linux integration host returns unknown. No production package update or container rollout has been tested by this repository.
 
 Sources: [NCSC PHP2Shell inventory](https://github.com/NCSC-NL/php2shell), [PHP advisory](https://www.php.net/archive/2026.php#2026-10-21-5), [Ansible apt](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/apt_module.html), [Ansible dnf](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/dnf_module.html). Advisory baseline reviewed 2026-10-22; refresh vendor evidence before use.
+
+## OpenShift dashboard
+
+The [authenticated web dashboard](dashboard/README.md) shows hosts, PHP/package versions, patch status, and evidence from AAP discovery reports. Deploy or refresh it with `playbooks/deploy-dashboard.yml`. Reports remain explicit snapshots; unknown findings are never treated as cleared.

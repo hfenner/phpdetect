@@ -1,0 +1,15 @@
+const assert = require('node:assert/strict');
+const {normalize,esc}=require('../dashboard/app.js');
+const host={host:'web01',patch_status:'affected',php_packages:{'php-fpm':{version:'8.3.6-0ubuntu0.24.04.1'}},runtimes:[{id:'main',package_owner:'php-fpm',patch_status:'affected',exposure:'internet'}],containers:[{id:'container1',name:'php',patch_status:'patched'}],container_cli_evidence:[{container_id:'container1',php_cli_version:'PHP 8.4.27 (cli)'}]};
+const result=normalize({artifacts:{phpdetect_discovery:{hosts:[host]}}});
+assert.equal(result.rows[0].status,'affected');
+assert.equal(result.rows[0].version,'8.3.6-0ubuntu0.24.04.1');
+assert.equal(result.rows[1].status,'unknown','Container version must never establish clearance');
+assert.equal(result.rows[1].version,'8.4.27');
+const missing=normalize({hosts:[{host:'unreachable',gaps:['Connection failed']}]});
+assert.equal(missing.rows[0].status,'unknown');
+assert.match(missing.rows[0].reason,/Connection failed/);
+assert.equal(normalize({hosts:[{host:'empty',patch_status:'patched'}]}).rows[0].status,'unknown','Host-wide clearance cannot be inferred');
+assert.throws(()=>normalize({fixtures:[]}),/discovery report/);
+assert.equal(esc('<img src=x onerror=alert(1)>'),'&lt;img src=x onerror=alert(1)&gt;');
+console.log('Dashboard evidence handling checks passed.');

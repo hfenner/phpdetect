@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ dashboard_namespace }}
+  labels:
+    app.kubernetes.io/part-of: phpdetect
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ dashboard_name }}
+  namespace: {{ dashboard_namespace }}
+  annotations:
+    serviceaccounts.openshift.io/oauth-redirectreference.primary: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"{{ dashboard_name }}"}}'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ dashboard_name }}-assets
+  namespace: {{ dashboard_namespace }}
+data: {{ dashboard_assets | to_json }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ dashboard_name }}-report
+  namespace: {{ dashboard_namespace }}
+data:
+  data.json: {{ dashboard_report_json | to_json }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ dashboard_name }}
+  namespace: {{ dashboard_namespace }}
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: {{ dashboard_name }}-tls
+spec:
+  selector:
+    app: {{ dashboard_name }}
+  ports:
+    - name: https
+      port: 443
+      targetPort: 8443
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ dashboard_name }}
+  namespace: {{ dashboard_namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: {{ dashboard_name }}}
+  template:
+    metadata:
+      labels: {app: {{ dashboard_name }}}
+      annotations:
+        phpdetect/assets-sha256: {{ dashboard_assets | to_json | hash('sha256') }}
+    spec:
+      serviceAccountName: {{ dashboard_name }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: dashboard
+          image: {{ dashboard_proxy_image }}
+          args:
+            - --provider=openshift
+            - --openshift-service-account={{ dashboard_name }}
+            - '--openshift-sar={"namespace":"{{ dashboard_namespace }}","resource":"services","resourceName":"{{ dashboard_name }}","verb":"get"}'
+            - --http-address=
+            - --https-address=:8443
+            - --upstream=file:///site/#/
+            - --tls-cert=/tls/tls.crt
+            - --tls-key=/tls/tls.key
+            - --cookie-secret-file=/cookie/cookie-secret
+            - --cookie-secure=true
+            - --cookie-expire=8h
+            - --cookie-refresh=5m
+            - --email-domain=*
+          ports: [{name: https, containerPort: 8443}]
+          resources:
+            requests: {cpu: 20m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 192Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          readinessProbe:
+            httpGet: {path: /oauth/healthz, port: https, scheme: HTTPS}
+            initialDelaySeconds: 3
+          livenessProbe:
+            httpGet: {path: /oauth/healthz, port: https, scheme: HTTPS}
+            initialDelaySeconds: 10
+          volumeMounts:
+            - {name: site, mountPath: /site, readOnly: true}
+            - {name: tls, mountPath: /tls, readOnly: true}
+            - {name: cookie, mountPath: /cookie, readOnly: true}
+      volumes:
+        - name: site
+          projected:
+            sources:
+              - configMap: {name: {{ dashboard_name }}-assets}
+              - configMap: {name: {{ dashboard_name }}-report}
+        - name: tls
+          secret: {secretName: {{ dashboard_name }}-tls}
+        - name: cookie
+          secret: {secretName: {{ dashboard_name }}-cookie}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ dashboard_name }}
+  namespace: {{ dashboard_namespace }}
+spec:
+  to: {kind: Service, name: {{ dashboard_name }}}
+  port: {targetPort: https}
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect

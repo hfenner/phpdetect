@@ -1,0 +1,147 @@
+---
+- name: Deploy the authenticated PHP report dashboard on OpenShift
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    dashboard_namespace: phpdetect
+    dashboard_name: phpdetect-dashboard
+    dashboard_api: '{{ lookup("env", "K8S_AUTH_HOST") | regex_replace("/$", "") }}'
+    dashboard_token: '{{ lookup("env", "K8S_AUTH_API_KEY") }}'
+    dashboard_ca: '{{ lookup("env", "K8S_AUTH_SSL_CA_CERT") }}'
+    dashboard_proxy_image: registry.redhat.io/openshift4/ose-oauth-proxy-rhel9@sha256:3eaea0de9e8f617f9707f7e0255943c4958d911d03c944add17fb73190d45f39
+    dashboard_resource_paths:
+      Namespace: /api/v1/namespaces
+      ServiceAccount: '/api/v1/namespaces/{{ dashboard_namespace }}/serviceaccounts'
+      ConfigMap: '/api/v1/namespaces/{{ dashboard_namespace }}/configmaps'
+      Service: '/api/v1/namespaces/{{ dashboard_namespace }}/services'
+      Deployment: '/apis/apps/v1/namespaces/{{ dashboard_namespace }}/deployments'
+      Route: '/apis/route.openshift.io/v1/namespaces/{{ dashboard_namespace }}/routes'
+  tasks:
+    - name: Validate connection and source parameters
+      ansible.builtin.assert:
+        that:
+          - dashboard_api is match('^https://')
+          - dashboard_token | length > 0
+          - dashboard_namespace is match('^[a-z][a-z0-9-]*$')
+          - dashboard_name is match('^[a-z][a-z0-9-]*$')
+          - dashboard_report_file is defined or dashboard_aap_job_id is defined
+    - name: Read a supplied private report snapshot
+      ansible.builtin.set_fact:
+        dashboard_report: '{{ lookup("file", dashboard_report_file) | from_json }}'
+      when: dashboard_report_file is defined
+      no_log: true
+    - name: Fetch an explicit AAP discovery job when requested
+      ansible.builtin.uri:
+        url: '{{ dashboard_aap_url }}/api/controller/v2/jobs/{{ dashboard_aap_job_id | int }}/'
+        headers:
+          Authorization: 'Bearer {{ lookup("env", "AAP_TOKEN") }}'
+        validate_certs: true
+      register: dashboard_aap_job
+      when: dashboard_aap_job_id is defined
+      no_log: true
+    - name: Assemble the AAP snapshot with its provenance
+      ansible.builtin.set_fact:
+        dashboard_report:
+          discovery: '{{ dashboard_aap_job.json.artifacts.phpdetect_discovery }}'
+          source:
+            job: '{{ dashboard_aap_job.json.id }}'
+            status: '{{ dashboard_aap_job.json.status }}'
+            finished: '{{ dashboard_aap_job.json.finished }}'
+      when: dashboard_aap_job_id is defined
+      no_log: true
+    - name: Require an actual discovery report
+      ansible.builtin.assert:
+        that:
+          - dashboard_report.discovery.hosts is defined
+          - dashboard_report.discovery.hosts is sequence
+        fail_msg: Supply a report with discovery.hosts; lab fixture intent alone is not a discovery assessment.
+    - name: Prepare the dashboard assets and report
+      ansible.builtin.set_fact:
+        dashboard_assets:
+          index.html: '{{ lookup("file", playbook_dir ~ "/../dashboard/index.html") }}'
+          styles.css: '{{ lookup("file", playbook_dir ~ "/../dashboard/styles.css") }}'
+          app.js: '{{ lookup("file", playbook_dir ~ "/../dashboard/app.js") }}'
+        dashboard_report_json: '{{ dashboard_report | to_json }}'
+      no_log: true
+    - name: Inspect namespace ownership before managing it
+      ansible.builtin.uri:
+        url: '{{ dashboard_api }}/api/v1/namespaces/{{ dashboard_namespace }}'
+        headers: {Authorization: 'Bearer {{ dashboard_token }}'}
+        ca_path: '{{ dashboard_ca if dashboard_ca | length else omit }}'
+        status_code: [200, 404]
+      register: dashboard_existing_namespace
+      no_log: true
+    - name: Refuse to adopt an unrelated namespace
+      ansible.builtin.assert:
+        that: >-
+          dashboard_existing_namespace.status == 404 or
+          dashboard_existing_namespace.json.metadata.labels.get('app.kubernetes.io/part-of', '') == 'phpdetect'
+    - name: Apply namespace and authenticated application resources
+      ansible.builtin.uri:
+        url: '{{ dashboard_api }}{{ dashboard_resource_paths[item.kind] }}/{{ item.metadata.name }}?fieldManager=phpdetect-dashboard'
+        method: PATCH
+        headers:
+          Authorization: 'Bearer {{ dashboard_token }}'
+          Content-Type: application/apply-patch+yaml
+        body: '{{ item | to_json }}'
+        ca_path: '{{ dashboard_ca if dashboard_ca | length else omit }}'
+        status_code: [200, 201]
+      loop: '{{ lookup("template", "dashboard/resources.yml.j2") | from_yaml_all | list }}'
+      loop_control:
+        label: '{{ item.kind }} {{ item.metadata.name }}'
+      no_log: true
+    - name: Check for the persistent OAuth cookie secret
+      ansible.builtin.uri:
+        url: '{{ dashboard_api }}/api/v1/namespaces/{{ dashboard_namespace }}/secrets/{{ dashboard_name }}-cookie'
+        headers: {Authorization: 'Bearer {{ dashboard_token }}'}
+        ca_path: '{{ dashboard_ca if dashboard_ca | length else omit }}'
+        status_code: [200, 404]
+      register: dashboard_cookie
+      no_log: true
+    - name: Create an OAuth cookie secret once
+      ansible.builtin.uri:
+        url: '{{ dashboard_api }}/api/v1/namespaces/{{ dashboard_namespace }}/secrets'
+        method: POST
+        headers: {Authorization: 'Bearer {{ dashboard_token }}'}
+        ca_path: '{{ dashboard_ca if dashboard_ca | length else omit }}'
+        body_format: json
+        body:
+          apiVersion: v1
+          kind: Secret
+          metadata: {name: '{{ dashboard_name }}-cookie'}
+          type: Opaque
+          stringData:
+            cookie-secret: '{{ lookup("password", "/dev/null", length=32, chars=["ascii_letters", "digits"]) }}'
+        status_code: 201
+      when: dashboard_cookie.status == 404
+      no_log: true
+    - name: Wait for the authenticated dashboard to become available
+      ansible.builtin.uri:
+        url: '{{ dashboard_api }}/apis/apps/v1/namespaces/{{ dashboard_namespace }}/deployments/{{ dashboard_name }}'
+        headers: {Authorization: 'Bearer {{ dashboard_token }}'}
+        ca_path: '{{ dashboard_ca if dashboard_ca | length else omit }}'
+      register: dashboard_deployment
+      until:
+        - dashboard_deployment.json.status.availableReplicas | default(0) | int >= 1
+        - dashboard_deployment.json.status.observedGeneration | default(0) | int >= dashboard_deployment.json.metadata.generation | int
+        - dashboard_deployment.json.status.updatedReplicas | default(0) | int == dashboard_deployment.json.spec.replicas | int
+        - dashboard_deployment.json.status.replicas | default(0) | int == dashboard_deployment.json.spec.replicas | int
+        - dashboard_deployment.json.status.unavailableReplicas | default(0) | int == 0
+      retries: 60
+      delay: 5
+      no_log: true
+    - name: Read the assigned OpenShift route
+      ansible.builtin.uri:
+        url: '{{ dashboard_api }}/apis/route.openshift.io/v1/namespaces/{{ dashboard_namespace }}/routes/{{ dashboard_name }}'
+        headers: {Authorization: 'Bearer {{ dashboard_token }}'}
+        ca_path: '{{ dashboard_ca if dashboard_ca | length else omit }}'
+      register: dashboard_route
+      no_log: true
+    - name: Publish the dashboard URL as an AAP artifact
+      ansible.builtin.set_stats:
+        data:
+          phpdetect_dashboard_url: 'https://{{ dashboard_route.json.spec.host }}'
+    - name: Report the dashboard URL
+      ansible.builtin.debug:
+        msg: 'https://{{ dashboard_route.json.spec.host }} — sign in with an OpenShift account allowed to get service {{ dashboard_name }} in namespace {{ dashboard_namespace }}.'
