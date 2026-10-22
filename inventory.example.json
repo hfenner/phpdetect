@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "baseline_reviewed_on": "2026-10-22",
   "scope_owner": null,
   "scope_evidence_refs": [],
@@ -36,18 +36,12 @@
       },
       "patch_status": "unknown",
       "status_reason": "No evidence collected",
-      "change_progress": "not_started",
-      "change_reference": null,
-      "target_package_or_image": null,
-      "updated_at_utc": null,
-      "restarted_or_redeployed_at_utc": null,
-      "old_workers_absent": null,
-      "serving_build_verified": null,
-      "health_checks_passed": null,
       "verified_by": null,
       "verified_at_utc": null,
       "evidence_refs": [],
-      "evidence_gaps": ["Discovery and runtime mapping not performed"],
+      "evidence_gaps": [
+        "Discovery and runtime mapping not performed"
+      ],
       "next_action": "Assign an owner and discover the serving runtime",
       "due_at_utc": null,
       "incident_status": "not_assessed",
