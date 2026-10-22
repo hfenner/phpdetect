@@ -205,7 +205,9 @@
           {{ ([] if detected_manager != 'unknown' else ['Package database unavailable'])
           + ([] if docker_ids.rc == 0 else ['Docker unavailable or inaccessible; container coverage unknown'])
           + (['One or more containers could not be inspected']
-          if docker_details.results | default([]) | rejectattr('rc', 'equalto', 0) | list | length > 0 else []) }}
+          if docker_details.results | default([]) | rejectattr('rc', 'equalto', 0) | list | length > 0 else [])
+          + (collected_runtimes | map(attribute='visibility_gaps') | flatten | unique
+          | map('regex_replace', '^', 'Process visibility: ') | list) }}
 
     - name: Retain version-only evidence linked to each running container
       ansible.builtin.set_fact:

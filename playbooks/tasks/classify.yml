@@ -20,8 +20,17 @@
       {{ 'affected' if classified_vendor and classify_evidence.get('status') == 'affected'
       else 'patched' if classified_vendor and classified_live and classify_evidence.get('status') == 'patched'
       else 'unknown' }}
+
+- name: Explain every reason a runtime is not cleared
+  ansible.builtin.set_fact:
     classified_reason: >-
-      {{ 'Exact affected vendor build' if classified_vendor and classify_evidence.get('status') == 'affected'
-      else 'Vendor package and running artifact evidence verified'
-      if classified_vendor and classified_live and classify_evidence.get('status') == 'patched'
-      else 'Missing or mismatched vendor, package, ownership, or live-process evidence' }}
+      {{ 'Exact affected vendor build' if classified_status == 'affected'
+      else 'Vendor package and running artifact evidence verified' if classified_status == 'patched'
+      else ((['Vendor, package, OS, or ownership evidence incomplete or mismatched'] if not classified_vendor else [])
+      + (classify_gaps | default([]) | map('regex_replace', '^', 'Process visibility gap: ') | list)
+      + (['Process visibility incomplete'] if not classify_visibility and classify_gaps | default([]) | length == 0 else [])
+      + (['No live instance of the artifact found'] if classify_visibility and classify_processes | length == 0 else [])
+      + (['Stale instance still running: pid ' ~ (classify_processes | rejectattr('current', 'equalto', true) | map(attribute='pid') | join(', '))]
+      if classify_processes | rejectattr('current', 'equalto', true) | list | length > 0 else [])
+      + (['Vendor status is neither patched nor affected'] if classified_vendor and classified_live
+      and classify_evidence.get('status') not in ['patched', 'affected'] else [])) | join('; ') }}

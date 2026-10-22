@@ -37,6 +37,19 @@
       - {name: missing channel, evidence: {channel: ''}, expected: unknown}
       - {name: missing review timestamp, evidence: {checked_at: ''}, expected: unknown}
       - {name: numeric OS version, evidence: {os_version: 24}, os: {ID: ubuntu, VERSION_ID: '24'}, expected: patched}
+      - name: visibility gap names the blocking process
+        visibility: false
+        gaps: ['pid 1: cannot read executable link (init)']
+        expected: unknown
+        reason_contains: 'Process visibility gap: pid 1: cannot read executable link (init)'
+      - name: stale replica is named
+        processes: [{pid: '123', current: true}, {pid: '456', current: false}]
+        expected: unknown
+        reason_contains: 'Stale instance still running: pid 456'
+      - name: no instance is distinguished from no visibility
+        processes: []
+        expected: unknown
+        reason_contains: 'No live instance of the artifact found'
   tasks:
     - name: Run every evidence-policy case
       ansible.builtin.include_tasks: classification-case.yml

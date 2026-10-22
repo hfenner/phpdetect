@@ -5,6 +5,7 @@
     runtime_packages_match: true
     runtime_owner: ''
     runtime_processes: []
+    runtime_gaps: []
 
 - name: Resolve the mapped artifact
   ansible.builtin.command:
@@ -25,7 +26,7 @@
 
 - name: Read the RPM owner of the mapped artifact
   ansible.builtin.command:
-    argv: [rpm, '-qf', '--qf', '%{NAME}', '{{ resolved_artifact.stdout }}']
+    argv: [rpm, '-qf', '--qf', '%{NAME}\n', '{{ resolved_artifact.stdout }}']
   register: rpm_owner
   when: detected_manager == 'dnf' and resolved_artifact.rc == 0
   changed_when: false
@@ -36,7 +37,7 @@
   ansible.builtin.set_fact:
     runtime_owner: >-
       {{ (debian_owner.stdout.split(': /', 1)[0] if debian_owner.rc | default(1) == 0
-      else rpm_owner.stdout if rpm_owner.rc | default(1) == 0 else '') }}
+      else rpm_owner.stdout_lines[0] if rpm_owner.rc | default(1) == 0 and rpm_owner.stdout_lines | length > 0 else '') }}
 
 - name: Compare every vendor-approved package revision
   ansible.builtin.set_fact:
@@ -45,23 +46,37 @@
 
 - name: Inspect all live instances and their file mappings without changing them
   # Linux procfs needs a short OS-native loop. All assessment policy remains in YAML.
-  # Exit 3 means incomplete visibility; it never clears the runtime.
+  # Output: "PID|true" or "PID|false" per live instance of the artifact, and
+  # "gap|PID|cause" for every process that could not be inspected. The scan always
+  # covers every process; a process that exits mid-scan is skipped, not a gap.
+  # Exit 3 whenever a gap was recorded: visibility is incomplete and never clears the runtime.
   ansible.builtin.shell: |
     set -o pipefail
-    [ "$(id -u)" = 0 ] || exit 3
-    [ -f "$PHPDETECT_ARTIFACT" ] || exit 3
-    host_root=$(stat -Lc '%d:%i' /) || exit 3
+    [ "$(id -u)" = 0 ] || { echo 'gap|-|not running as root'; exit 3; }
+    [ -f "$PHPDETECT_ARTIFACT" ] || { echo 'gap|-|artifact is not a regular file'; exit 3; }
+    host_root=$(stat -Lc '%d:%i' /) || { echo 'gap|-|cannot stat host root'; exit 3; }
+    gaps=0
     for proc in /proc/[0-9]*; do
+      pid=${proc##*/}
       exe=$(readlink "$proc/exe" 2>/dev/null) || {
-        [ ! -d "$proc" ] && continue
-        command_line=$(tr '\0' ' ' < "$proc/cmdline" 2>/dev/null) || exit 3
-        [ -z "$command_line" ] && continue
-        exit 3
+        [ -d "$proc" ] || continue
+        command_line=$(tr '\0' ' ' < "$proc/cmdline" 2>/dev/null) || {
+          [ -d "$proc" ] || continue
+          printf 'gap|%s|cannot read cmdline\n' "$pid"; gaps=1; continue
+        }
+        [ -n "$command_line" ] || continue
+        comm=$(tr -d '|\n' < "$proc/comm" 2>/dev/null)
+        printf 'gap|%s|cannot read executable link (%s)\n' "$pid" "${comm:-unknown}"; gaps=1; continue
       }
-      process_root=$(stat -Lc '%d:%i' "$proc/root" 2>/dev/null) || exit 3
+      process_root=$(stat -Lc '%d:%i' "$proc/root" 2>/dev/null) || {
+        [ -d "$proc" ] || continue
+        printf 'gap|%s|cannot stat process root\n' "$pid"; gaps=1; continue
+      }
       [ "$process_root" = "$host_root" ] || continue
-      [ -r "$proc/maps" ] || exit 3
-      maps=$(cat "$proc/maps" 2>/dev/null) || exit 3
+      maps=$(cat "$proc/maps" 2>/dev/null) || {
+        [ -d "$proc" ] || continue
+        printf 'gap|%s|cannot read memory maps\n' "$pid"; gaps=1; continue
+      }
       matched=0
       [ "${exe% (deleted)}" = "$PHPDETECT_ARTIFACT" ] && matched=1
       awk -v path="$PHPDETECT_ARTIFACT" '$6 == path { found=1 } END { exit !found }' <<< "$maps" && matched=1
@@ -82,8 +97,10 @@
             ;;
         esac
       done <<< "$maps"
-      printf '%s|%s\n' "${proc##*/}" "$current"
+      printf '%s|%s\n' "$pid" "$current"
     done
+    [ "$gaps" = 0 ] || exit 3
+    exit 0
   args:
     executable: /bin/bash
   environment:
@@ -99,6 +116,16 @@
   loop: '{{ live_artifacts.stdout_lines | default([]) }}'
   when: item is match('^[0-9]+[|](true|false)$')
 
+- name: Record process visibility gaps with their cause
+  ansible.builtin.set_fact:
+    runtime_gaps: "{{ runtime_gaps + ['pid ' ~ item.split('|', 2)[1] ~ ': ' ~ item.split('|', 2)[2]] }}"
+  loop: '{{ live_artifacts.stdout_lines | default([]) | select("match", "^gap[|]") | list }}'
+
+- name: Report a failed inspection that produced no gap lines (for example bash missing)
+  ansible.builtin.set_fact:
+    runtime_gaps: "{{ runtime_gaps + ['procfs inspection failed with exit status ' ~ live_artifacts.rc ~ ': ' ~ (live_artifacts.stderr | default('') | trim)] }}"
+  when: live_artifacts.rc != 0 and runtime_gaps | length == 0
+
 - name: Evaluate vendor and running-build evidence
   ansible.builtin.include_tasks: classify.yml
   vars:
@@ -108,6 +135,7 @@
     classify_owner: '{{ runtime_owner }}'
     classify_processes: '{{ runtime_processes }}'
     classify_visibility: '{{ live_artifacts.rc == 0 }}'
+    classify_gaps: '{{ runtime_gaps }}'
 
 - name: Append runtime assessment
   ansible.builtin.set_fact:
@@ -117,4 +145,5 @@
       "priority": 'P2' if runtime.exposure | default('unknown') == 'internal' else 'P1',
       "exposure": runtime.exposure | default('unknown'), "patch_status": classified_status,
       "processes": runtime_processes, "running_build_verified": classified_live,
+      "visibility_gaps": runtime_gaps,
       "evidence": runtime_evidence, "reason": classified_reason}] }}

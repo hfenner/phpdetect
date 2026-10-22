@@ -8,8 +8,11 @@
     classify_owner: '{{ test_case.owner | default("php-fpm") }}'
     classify_processes: '{{ test_case.processes | default([{"pid": "123", "current": true}]) }}'
     classify_visibility: '{{ test_case.visibility | default(true) }}'
+    classify_gaps: '{{ test_case.gaps | default([]) }}'
 
 - name: Assert the expected classification
   ansible.builtin.assert:
-    that: classified_status == test_case.expected
-    fail_msg: 'Failed {{ test_case.name }}: got {{ classified_status }}, expected {{ test_case.expected }}'
+    that:
+      - classified_status == test_case.expected
+      - test_case.reason_contains | default('') in classified_reason
+    fail_msg: 'Failed {{ test_case.name }}: got {{ classified_status }} ({{ classified_reason }}), expected {{ test_case.expected }}'
