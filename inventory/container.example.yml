@@ -12,6 +12,9 @@ phpdetect_update:
     advisory_url: https://vendor.example.invalid/security/advisory
     checked_at: REPLACE_WITH_UTC_TIMESTAMP
     cves: [CVE-2026-109618, CVE-2026-109619]
+  # health_retries: 20   # 3-second polls to wait for the container healthcheck
   health_checks:
     - url: https://application.example.invalid/health
       status_code: 200
+      # headers: {Host: application.example.invalid}
+      # run_from: localhost

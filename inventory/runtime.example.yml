@@ -29,6 +29,10 @@ phpdetect_update:
   services: [php8.3-fpm]
   # apt uses name=version. dnf uses exact name-epoch:version-release.arch.
   packages: ['php8.3-fpm=REPLACE_WITH_FULL_FIXED_PACKAGE_REVISION', 'php8.3-common=REPLACE_WITH_FULL_FIXED_PACKAGE_REVISION']
+  # Checks run from the controller unless run_from names an inventory host. Target the
+  # backend address with a Host header so the balancer cannot answer for another replica.
   health_checks:
     - url: https://store.example.invalid/health
       status_code: 200
+      # headers: {Host: store.example.invalid}
+      # run_from: localhost

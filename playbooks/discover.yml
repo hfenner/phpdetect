@@ -42,7 +42,10 @@
     - name: Collect package, process, runtime, and container evidence
       phpdetect:
         runtimes: '{{ phpdetect_runtimes | default([]) }}'
+        # Opt in to docker exec php -n -v inside running containers; it executes image code.
+        container_cli_probe: '{{ phpdetect_container_cli_probe | default(false) | bool }}'
       register: discovery
+      no_log: true
     - name: Build product candidate matches without treating matches as clearance
       ansible.builtin.set_fact:
         product_matches: >-

@@ -20,6 +20,12 @@
           - phpdetect_update.health_checks | length > 0
           - "'REPLACE_' not in (phpdetect_update | to_json)"
           - "'example.invalid' not in (phpdetect_update | to_json)"
+    - name: Require explicit confirmation of this change before any redeploy
+      ansible.builtin.assert:
+        that: ansible_check_mode or (phpdetect_confirm_change | default('') == phpdetect_update.change_id)
+        fail_msg: >-
+          Pass -e phpdetect_confirm_change={{ phpdetect_update.change_id }} to run this change.
+          A plan left in host_vars must not recreate production containers on an unrelated run.
     - name: Read the resolved Compose configuration privately
       ansible.builtin.command:
         argv: [docker, compose, '-f', '{{ phpdetect_update.compose_file }}', config, '--format', json]
@@ -97,8 +103,11 @@
           loop: '{{ new_containers.stdout_lines | default([]) }}'
           register: replicas
           changed_when: false
-          until: (replicas.stdout | from_json)[0].State.Running
-          retries: 10
+          # Wait for the healthcheck as well: a freshly recreated container reports "starting".
+          until: >-
+            (replicas.stdout | from_json)[0].State.Running and
+            (replicas.stdout | from_json)[0].State.get('Health', {}).get('Status', 'healthy') == 'healthy'
+          retries: '{{ phpdetect_update.health_retries | default(20) }}'
           delay: 3
           when: not ansible_check_mode
           no_log: true
@@ -125,9 +134,12 @@
           ansible.builtin.uri:
             url: '{{ item.url }}'
             status_code: '{{ item.status_code | default(200) }}'
+            headers: '{{ item.headers | default({}) }}'
             validate_certs: true
             follow_redirects: none
           loop: '{{ phpdetect_update.health_checks }}'
+          delegate_to: '{{ item.run_from | default("localhost") }}'
+          become: false
           when: not ansible_check_mode
         - name: Record verified service result
           ansible.builtin.set_fact:

@@ -19,6 +19,12 @@
           - phpdetect_update.health_checks | default([]) | length > 0
           - phpdetect_update.runtime_ids | difference(phpdetect_runtimes | map(attribute='id') | list) | length == 0
         fail_msg: 'A complete explicit package update plan is required. Unsupported platforms/products are not modified.'
+    - name: Require explicit confirmation of this change before any service restart
+      ansible.builtin.assert:
+        that: ansible_check_mode or (phpdetect_confirm_change | default('') == phpdetect_update.change_id)
+        fail_msg: >-
+          Pass -e phpdetect_confirm_change={{ phpdetect_update.change_id }} to run this change.
+          A plan left in host_vars must not restart production on an unrelated run.
     - name: Select only planned runtime mappings
       ansible.builtin.set_fact:
         update_runtimes: '{{ phpdetect_runtimes | selectattr("id", "in", phpdetect_update.runtime_ids) | list }}'
@@ -41,17 +47,19 @@
         that:
           - "'*' not in item"
           - "'REPLACE_' not in item"
-          - "(ansible_facts.os_family == 'Debian' and '=' in item) or (ansible_facts.os_family == 'RedHat' and item is search('-[0-9]+:'))"
+          - "(ansible_facts.os_family == 'Debian' and item is match('^[a-z0-9][a-z0-9+.-]*=[A-Za-z0-9+.:~-]+$')) or (ansible_facts.os_family == 'RedHat' and item is match('^[A-Za-z0-9][A-Za-z0-9+._-]*-[0-9]+:[A-Za-z0-9+._~^-]+\\.[a-z0-9_]+$'))"
+        fail_msg: 'Package specs must be a single pinned name=version (apt) or name-epoch:version-release.arch (dnf) with no whitespace or options.'
       loop: '{{ phpdetect_update.packages }}'
     - name: Collect pre-change evidence even in check mode
       phpdetect:
         runtimes: '{{ update_runtimes }}'
       register: before
+      no_log: true
     - name: Require evidence for this OS and exact package plan
       ansible.builtin.assert:
         that:
-          - item.evidence.os_id == before.report.os_release.ID | replace('"', '')
-          - item.evidence.os_version == before.report.os_release.VERSION_ID | replace('"', '')
+          - item.evidence.os_id | string == before.report.os_release.ID | replace('"', '')
+          - item.evidence.os_version | string == before.report.os_release.VERSION_ID | replace('"', '')
           - before.report.package_manager in ['apt', 'dnf']
           - item.evidence.packages.keys() | difference(before.report.php_packages.keys()) | length == 0
       loop: '{{ update_runtimes }}'
@@ -108,6 +116,7 @@
             runtimes: '{{ update_runtimes }}'
           register: after
           when: not ansible_check_mode
+          no_log: true
         - name: Require every planned runtime to be verified patched
           ansible.builtin.assert:
             that:
@@ -119,9 +128,14 @@
           ansible.builtin.uri:
             url: '{{ item.url }}'
             status_code: '{{ item.status_code | default(200) }}'
+            headers: '{{ item.headers | default({}) }}'
             validate_certs: true
             follow_redirects: none
           loop: '{{ phpdetect_update.health_checks }}'
+          # Runs from the controller unless run_from names another inventory host. Use a
+          # backend address plus a Host header to verify this backend rather than a balancer.
+          delegate_to: '{{ item.run_from | default("localhost") }}'
+          become: false
           when: not ansible_check_mode
         - name: Set final change result
           ansible.builtin.set_fact:

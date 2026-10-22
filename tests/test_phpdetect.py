@@ -57,6 +57,23 @@ class AssessmentTests(unittest.TestCase):
         self.proc['maps'] = '0-1 r--p 0 00:00 123 /lib/libphp.so (deleted)'
         self.assertEqual(self.assess(), 'unknown')
 
+    def test_pseudo_memory_mappings_do_not_block(self):
+        self.proc['maps'] = '\n'.join(['0-1 rw-s 0 00:01 7 /memfd:opcache (deleted)',
+                                       '0-1 rw-s 0 00:05 5 /dev/zero (deleted)',
+                                       '0-1 rw-s 0 00:01 9 /SYSV00000000 (deleted)'])
+        self.assertEqual(self.assess(), 'patched')
+
+    def test_container_process_with_same_path_is_ignored(self):
+        foreign = dict(self.proc, pid=456, inode=0, host_ns=False)
+        self.assertEqual(self.assess(procs=[self.proc, foreign]), 'patched')
+
+    def test_only_container_process_cannot_clear_host_artifact(self):
+        self.assertEqual(self.assess(procs=[dict(self.proc, host_ns=False)]), 'unknown')
+
+    def test_integer_os_version_from_yaml(self):
+        self.runtime['evidence']['os_version'] = 12
+        self.assertEqual(self.assess(release={'ID': 'ubuntu', 'VERSION_ID': '12'}), 'patched')
+
     def test_unreadable_processes(self):
         self.assertEqual(self.assess(proc_gaps=['permission denied']), 'unknown')
 
