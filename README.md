@@ -19,7 +19,8 @@ Use [package host variables](inventory/runtime.example.yml) or [Docker Compose h
 
 ## Discovery: `playbooks/discover.yml`
 
-- Downloads a commit-pinned NCSC product inventory snapshot on the controller, and matches configured product terms. Matches are candidates, never proof of remediation. Download failures and absent matches do not clear products. Set `-e phpdetect_fetch_ncsc=false` for offline collection.
+- Reads the bundled, commit-pinned NCSC product inventory from `data/ncsc/snapshot.json` and matches configured product terms without network requests. Matches are candidates, never proof of remediation; absent matches do not clear products. Missing or malformed snapshots fail discovery. The former `phpdetect_fetch_ncsc` variable is no longer used; discovery always reads local data.
+- The `Update bundled NCSC lists` GitHub Action checks NCSC `main` hourly and supports manual runs. It commits refreshed data to this repository’s default branch using `GITHUB_TOKEN` with `contents: write`. Enable Actions and allow that workflow to write to the default branch; branch protection may prevent direct bot commits. Scheduled runs begin once the workflow is on the default branch, can be delayed by GitHub, and capture the latest upstream commit rather than every intervening push. No upstream workflow access or personal token is required. See [snapshot provenance and local refresh](data/ncsc/README.md).
 - Inventories full PHP package revisions, common installation paths, live PHP processes, Apache PHP module candidates, web-server routing hints, and Docker containers. Running containers are checked with `php -n -v` for supporting CLI version evidence; this does not verify their web-serving runtime. Does not dump environment variables or application secrets.
 - Joins inventory-defined website/runtime relationships to observed binaries, package ownership, process identities, and mapped files. `sites` and the artifact path must be supplied for authoritative mapping; it cannot infer every load-balancer route or arbitrary application layout. Unmapped candidates remain unknown.
 - Gives internet-facing or unknown-exposure runtime records priority P1; internal records P2. Retains per-runtime evidence and reasons.
@@ -50,7 +51,7 @@ Package updates require `python3-apt` or `python3-dnf` on the target, supported 
 python3 -m unittest discover -s tests -v
 ansible-playbook playbooks/discover.yml --syntax-check
 ansible-playbook playbooks/update.yml --syntax-check
-ansible-playbook -i tests/local.yml playbooks/discover.yml -e phpdetect_fetch_ncsc=false
+ansible-playbook -i tests/local.yml playbooks/discover.yml
 ```
 
 The local integration inventory runs discovery only; it never authorizes updates. Tests cover vendor backports, stale/deleted workers and libraries, missing permissions/CVEs, OS mismatches, and unknown results. No production package update or container rollout has been tested by this repository.
