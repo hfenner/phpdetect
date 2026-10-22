@@ -32,3 +32,9 @@ Users sign in through OpenShift and must have permission to `get` the `phpdetect
 The default OAuth proxy image is pinned to a digest tested on OpenShift 4.20. Override `dashboard_proxy_image` with an appropriate supported image for another cluster. The deployment needs the cluster's Red Hat registry pull access.
 
 Run `node tests/dashboard.cjs` to verify conservative evidence handling and output escaping.
+
+## Public GitHub Pages demo
+
+https://hfenner.github.io/phpdetect/ serves fictional data from `demo/sample.json`. The `deploy-demo.yml` workflow rebuilds it when dashboard files change on main. The build copies only index.html, app.js, styles.css and the sample dataset into `_site`; it never reads AAP or OpenShift reports or credentials. Do not replace the fixture with a real report.
+
+The banner labels all data and patch-status examples as fictional. The OpenShift deployment continues using its authenticated report snapshot. JSON import stays local to the browser session; refreshing restores the sample data.

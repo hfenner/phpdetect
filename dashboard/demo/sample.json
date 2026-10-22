@@ -1,0 +1,118 @@
+{
+  "demo": true,
+  "source": {
+    "status": "fictional sample"
+  },
+  "discovery": {
+    "status": "sample data only",
+    "ncsc_commit": "Not used \u2014 synthetic demo",
+    "hosts": [
+      {
+        "host": "demo-linux-01",
+        "address": "192.0.2.11",
+        "platform": "Linux",
+        "patch_status": "affected",
+        "php_packages": {
+          "php-fpm": "0:8.4.0-demo.1.x86_64"
+        },
+        "candidates": [
+          "/usr/sbin/php-fpm"
+        ],
+        "runtimes": [
+          {
+            "id": "example-fpm",
+            "artifact": "/usr/sbin/php-fpm",
+            "package_owner": "php-fpm",
+            "patch_status": "affected",
+            "exposure": "internet",
+            "processes": [
+              {
+                "pid": 101,
+                "current": true
+              }
+            ],
+            "reason": "Fictional affected example for interface demonstration. Not a real advisory or verified build.",
+            "evidence": {
+              "note": "Synthetic sample; no vendor patch claim."
+            }
+          }
+        ],
+        "gaps": [
+          "Fictional sample. Complete host coverage is not established."
+        ]
+      },
+      {
+        "host": "demo-linux-02",
+        "address": "192.0.2.12",
+        "platform": "Linux",
+        "patch_status": "unknown",
+        "php_packages": {
+          "php-fpm": "0:8.4.0-demo.2.x86_64"
+        },
+        "candidates": [
+          "/usr/sbin/php-fpm"
+        ],
+        "runtimes": [
+          {
+            "id": "example-fpm",
+            "artifact": "/usr/sbin/php-fpm",
+            "package_owner": "php-fpm",
+            "patch_status": "patched",
+            "exposure": "internal",
+            "processes": [
+              {
+                "pid": 102,
+                "current": true
+              }
+            ],
+            "reason": "Fictional patched example for interface demonstration. Not a real advisory or verified build.",
+            "evidence": {
+              "note": "Synthetic sample; no vendor patch claim."
+            }
+          }
+        ],
+        "gaps": [
+          "Fictional sample. Complete host coverage is not established."
+        ]
+      },
+      {
+        "host": "demo-windows-01",
+        "address": "192.0.2.21",
+        "platform": "Windows",
+        "patch_status": "unknown",
+        "runtimes": [
+          {
+            "id": "C:\\PHP\\php-cgi.exe",
+            "artifact": "C:\\PHP\\php-cgi.exe",
+            "version": "8.4.0-demo",
+            "patch_status": "unknown",
+            "processes": [],
+            "reason": "Fictional Windows inventory example; vendor and loaded-build evidence missing."
+          }
+        ]
+      },
+      {
+        "host": "demo-containers-01",
+        "address": "192.0.2.31",
+        "platform": "Linux",
+        "patch_status": "unknown",
+        "containers": [
+          {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "name": "/demo-php-web",
+            "image_reference": "example.invalid/demo/php:sample",
+            "image_id": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "running": true,
+            "patch_status": "unknown"
+          }
+        ],
+        "container_cli_evidence": [
+          {
+            "container_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "php_cli_version": "PHP 8.4.0-demo (cli)"
+          }
+        ]
+      }
+    ]
+  }
+}
