@@ -19,7 +19,8 @@ html=html.replace('OpenShift authenticated','Public demo · Fictional data')
  .replace('Exposure overview</title>','Public demo</title>');
 fs.writeFileSync(path.join(out,'index.html'),html);
 let js=fs.readFileSync(path.join(dashboard,'app.js'),'utf8');
-js=js.replace('`AAP discovery${','`Demo snapshot${');
+js=js.replace('`AAP discovery${','`Demo snapshot${')
+ .replace("source.status && source.status!=='successful'", "source.status && source.status!=='fictional sample' && source.status!=='successful'");
 fs.writeFileSync(path.join(out,'app.js'),js);
 fs.copyFileSync(path.join(dashboard,'styles.css'),path.join(out,'styles.css'));
 fs.writeFileSync(path.join(out,'data.json'),JSON.stringify(sample,null,2)+'\n');
