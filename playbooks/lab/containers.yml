@@ -87,7 +87,7 @@
     use_proxy: false
   register: lab_http
   until: lab_http.status | default(0) == 200
-  retries: 30
+  retries: 10
   delay: 2
   loop: '{{ lab_fixtures }}'
 - name: Reject any fixture with an unexpected serving build

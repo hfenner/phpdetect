@@ -28,6 +28,14 @@ jobs:
           cfn-lint /tmp/phpdetect-lab-cloudformation.yml
       - name: Build fixtures and exercise actual discovery
         run: ansible-playbook tests/lab-containers.yml
+      - name: Inspect fixture failures
+        if: failure()
+        run: |
+          if test -f /opt/phpdetect-lab/compose.yml; then
+            sudo docker compose -f /opt/phpdetect-lab/compose.yml ps -a
+            sudo docker compose -f /opt/phpdetect-lab/compose.yml logs --tail 60
+            sudo docker network inspect phpdetect-lab_isolated
+          fi
       - name: Remove lab containers
         if: always()
         run: |
