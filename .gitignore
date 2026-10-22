@@ -10,3 +10,4 @@ __pycache__/
 /context/
 /.venv/
 /aap/site.yml
+/aap/lab-site.yml

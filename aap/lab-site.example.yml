@@ -1,0 +1,17 @@
+---
+# Keep AAP_TOKEN in your environment or an injected secret, never in this file.
+aap_url: https://gateway.example.com
+aap_organization_id: 1
+# Existing AAP credential IDs, not AWS access keys or EC2 key pair names.
+aap_lab_aws_credential_id: 2
+aap_lab_machine_credential_id: 3
+phpdetect_ee_image: ghcr.io/hfenner/phpdetect-ee@sha256:6ad781c9268c864e6a21cb9a4c35619c68d8d0950fe107949b257ce7d5d25304
+phpdetect_project_revision: f7135502d6f42d458a1a85b824151bdb5dac39d3
+# Optional survey defaults; key pair and CIDR may instead be entered at launch.
+aap_lab_default_id: training
+aap_lab_default_region: us-east-1
+# aap_lab_default_key_name: existing-ec2-key-name
+# aap_lab_default_ssh_cidr: 203.0.113.10/32
+# Optional administrator-managed build variables, including the reviewed package fixture.
+aap_lab_build_extra_vars:
+  phpdetect_lab_instance_type: t3.small

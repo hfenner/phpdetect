@@ -1,0 +1,30 @@
+---
+- name: Validate the actual rendered AAP lab launch forms
+  hosts: localhost
+  gather_facts: false
+  vars:
+    aap_lab_aws_credential_id: 21
+    aap_lab_machine_credential_id: 34
+  tasks:
+    - name: Render the installer definitions
+      ansible.builtin.include_tasks: ../aap/lab-definitions.yml
+    - name: Verify independent jobs and credential scope
+      ansible.builtin.assert:
+        that:
+          - lab_template_definitions | length == 2
+          - lab_template_definitions[0].playbook == 'playbooks/build-lab-aws.yml'
+          - lab_template_definitions[1].playbook == 'playbooks/destroy-lab-aws.yml'
+          - lab_template_definitions[0].credential_ids | sort == [21, 34]
+          - lab_template_definitions[1].credential_ids == [21]
+          - "'phpdetect_lab_confirm' in (lab_template_definitions[0].survey | map(attribute='variable') | list)"
+          - "'phpdetect_lab_destroy_confirm' in (lab_template_definitions[1].survey | map(attribute='variable') | list)"
+          - "'phpdetect_lab_confirm' not in (lab_template_definitions[1].survey | map(attribute='variable') | list)"
+    - name: Require explicit confirmation with no prefilled value
+      ansible.builtin.assert:
+        that:
+          - item.survey[-1].required
+          - item.survey[-1].default == ''
+          - item.survey | map(attribute='variable') | unique | length == item.survey | length
+      loop: '{{ lab_template_definitions }}'
+      loop_control:
+        label: '{{ item.name }}'

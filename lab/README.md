@@ -10,6 +10,28 @@
 
 PHP's [advisory](https://www.php.net/archive/2026.php#2026-10-21-5) identifies 8.4.27 as fixed. The playbook verifies the PHP version actually serving HTTP for each fixture; fixture labels never override discovery's evidence policy. Container discovery currently inventories identities and optional CLI versions, so it intentionally retains unknown for all three. Use the optional vendor-package fixture below to test affected/patched runtime classification. No exploit payloads are included.
 
+## Install the lab in AAP with Ansible
+
+Run [`aap/install-lab.yml`](../aap/install-lab.yml) to configure AAP automatically. Copy [`aap/lab-site.example.yml`](../aap/lab-site.example.yml) to `aap/lab-site.yml` (gitignored) and set your gateway URL, organization ID, and existing AWS and Machine credential IDs. Supply a gateway-issued token using the `AAP_TOKEN` environment variable. The Machine credential must match the EC2 key pair you select when launching the build.
+
+```sh
+ansible-playbook -i localhost, aap/install-lab.yml -e @aap/lab-site.yml
+```
+
+The installer creates or updates:
+
+- **phpdetect Lab EE**, using the pinned AWS-capable public image.
+- **phpdetect Lab**, a separate Git project synchronized to the selected revision.
+- **phpdetect Lab Bootstrap**, with a local-only bootstrap host.
+- **phpdetect - Build AWS lab**, with the existing AWS and Machine credentials and a required launch survey.
+- **phpdetect - Destroy AWS lab**, with only the AWS credential and its own deletion survey.
+
+It checks credential types and that the synchronized project contains both lab playbooks. Rerunning reconciles these named resources and their credential associations. It does not create credentials, change production discovery/update templates, assign user roles, schedule jobs, launch AWS resources, or install a workflow linking creation to deletion. Grant the appropriate AAP teams Execute permission on these templates after setup. Do not launch Build and Destroy concurrently for the same lab ID; they are independent templates.
+
+Optional `aap_lab_default_*` variables prefill the launch forms. The confirmation fields remain blank. `aap_lab_build_extra_vars` accepts only the instance type and optional reviewed vendor-package fixture. Registry credentials are optional for mirrored/private images; the public GHCR image needs none. Treat job artifacts as internal evidence.
+
+The installer uses built-in Ansible HTTPS calls through the AAP 2.7 gateway; it needs organization resource-management permissions. Run it from a trusted workstation, or from an existing bootstrap AAP job with `AAP_TOKEN` injected by your secret-management integration. Its localhost Python path targets the supplied Python 3.12 EE. Check mode is rejected; it performs real AAP configuration changes when invoked.
+
 ## Run from AAP 2.7
 
 Use an EE built after the AWS lab change: it includes `amazon.aws`, boto3, and botocore. Earlier pinned EE images do not include these dependencies. Update the EE digest and AAP Project revision to the lab-capable tested build.

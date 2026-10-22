@@ -47,3 +47,7 @@ These artifacts are retained with the AAP job, visible to users allowed to read 
 Validate a discovery job against a non-production Linux host first. Confirm the inventory connection, retained artifacts, unknown states for incomplete evidence, and the pinned EE digest. Then test the separate update-plan template before authorizing any update. No production update or live AAP installation is exercised by the public build workflow.
 
 References: [Ansible Builder definition](https://docs.ansible.com/projects/builder/en/latest/definition/), [AAP 2.7 execution environments](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7/administer-define__create__and_build_execution_environments), [AAP 2.7 API changes](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7/upgrade-con_upgrade_api_changes_27).
+
+## Install AWS lab job templates
+
+Use [install-lab.yml](install-lab.yml) with [lab-site.example.yml](lab-site.example.yml) to register the dedicated lab EE, project, bootstrap inventory, and separate Build/Destroy templates with launch surveys. See [the automated lab setup](../lab/README.md#install-the-lab-in-aap-with-ansible). This installer does not require the discovery inventory or launch AWS jobs.

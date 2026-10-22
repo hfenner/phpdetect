@@ -1,0 +1,156 @@
+---
+- name: Install independent AWS lab job templates in AAP 2.7
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    aap_token: '{{ lookup("ansible.builtin.env", "AAP_TOKEN") }}'
+    aap_api: '{{ aap_url | regex_replace("/$", "") }}/api/controller/v2'
+  module_defaults:
+    ansible.builtin.uri:
+      headers:
+        Authorization: 'Bearer {{ aap_token }}'
+      validate_certs: true
+      follow_redirects: none
+      body_format: json
+  tasks:
+    - name: Validate installation inputs before changing AAP
+      ansible.builtin.assert:
+        that:
+          - aap_url | default('') is match('^https://[^/]+/?$')
+          - aap_token | length > 0
+          - aap_organization_id | default(0) | int > 0
+          - aap_lab_aws_credential_id | default(0) | int > 0
+          - aap_lab_machine_credential_id | default(0) | int > 0
+          - phpdetect_ee_image | default('') is match('^.+@sha256:[a-f0-9]{64}$')
+          - phpdetect_project_revision | default('') | length > 0
+          - not ansible_check_mode
+        fail_msg: Supply AAP gateway URL, AAP_TOKEN, organization and existing AWS/Machine credential IDs, pinned EE image and project revision. Check mode is unsupported.
+      no_log: true
+    - name: Validate administrator-managed build settings
+      ansible.builtin.assert:
+        that:
+          - aap_lab_build_extra_vars | default({}) is mapping
+          - (aap_lab_build_extra_vars | default({})).keys() | difference(['phpdetect_lab_instance_type', 'phpdetect_lab_package']) | length == 0
+          - aap_lab_default_id | default('training') is match('^[a-z][a-z0-9-]{0,30}$')
+        fail_msg: Only instance type and reviewed package fixture settings belong in build extra variables; launch identity and confirmations come from the survey.
+    - name: Verify both existing credentials have the expected type
+      ansible.builtin.include_tasks: lab-credential-check.yml
+      loop:
+        - id: '{{ aap_lab_aws_credential_id | int }}'
+          kind: aws
+        - id: '{{ aap_lab_machine_credential_id | int }}'
+          kind: ssh
+      loop_control:
+        loop_var: lab_credential
+    - name: Register a dedicated lab execution environment
+      ansible.builtin.include_tasks: resource.yml
+      vars:
+        resource_endpoint: execution_environments
+        resource_fact: lab_installed_ee
+        resource_payload:
+          name: phpdetect Lab EE
+          organization: '{{ aap_organization_id | int }}'
+          image: '{{ phpdetect_ee_image }}'
+          pull: always
+          credential: '{{ aap_registry_credential_id | default(none) }}'
+    - name: Register a separate lab project
+      ansible.builtin.include_tasks: resource.yml
+      vars:
+        resource_endpoint: projects
+        resource_fact: lab_installed_project
+        resource_payload:
+          name: phpdetect Lab
+          organization: '{{ aap_organization_id | int }}'
+          scm_type: git
+          scm_url: https://github.com/hfenner/phpdetect.git
+          scm_branch: '{{ phpdetect_project_revision }}'
+          scm_update_on_launch: true
+          scm_clean: true
+          scm_delete_on_update: false
+    - name: Wait for an automatic project synchronization to finish
+      ansible.builtin.uri:
+        url: '{{ aap_api }}/projects/{{ lab_installed_project.id }}/'
+      register: lab_project_state
+      until: lab_project_state.json.status not in ['new', 'pending', 'waiting', 'running', 'updating']
+      retries: 60
+      delay: 5
+      no_log: true
+    - name: Synchronize the pinned lab source
+      ansible.builtin.uri:
+        url: '{{ aap_api }}/projects/{{ lab_installed_project.id }}/update/'
+        method: POST
+        body: {}
+        status_code: 202
+      register: lab_project_sync
+      no_log: true
+    - name: Wait for synchronization
+      ansible.builtin.uri:
+        url: '{{ aap_api }}/project_updates/{{ lab_project_sync.json.id }}/'
+      register: lab_sync_state
+      until: lab_sync_state.json.status in ['successful', 'failed', 'error', 'canceled']
+      retries: 60
+      delay: 5
+      no_log: true
+    - name: Require successful project synchronization
+      ansible.builtin.assert:
+        that: lab_sync_state.json.status == 'successful'
+    - name: Verify the selected source revision includes both lab playbooks
+      ansible.builtin.uri:
+        url: '{{ aap_api }}/projects/{{ lab_installed_project.id }}/playbooks/'
+      register: lab_project_playbooks
+      no_log: true
+    - name: Reject a source revision without the lab builder and teardown
+      ansible.builtin.assert:
+        that:
+          - "'playbooks/build-lab-aws.yml' in lab_project_playbooks.json"
+          - "'playbooks/destroy-lab-aws.yml' in lab_project_playbooks.json"
+    - name: Create a dedicated bootstrap inventory
+      ansible.builtin.include_tasks: resource.yml
+      vars:
+        resource_endpoint: inventories
+        resource_fact: lab_installed_inventory
+        resource_payload:
+          name: phpdetect Lab Bootstrap
+          organization: '{{ aap_organization_id | int }}'
+          description: Local AWS orchestration only; EC2 hosts are added dynamically during build jobs.
+    - name: Find the bootstrap localhost
+      ansible.builtin.uri:
+        url: '{{ aap_api }}/inventories/{{ lab_installed_inventory.id }}/hosts/?name=localhost'
+      register: lab_localhost
+      no_log: true
+    - name: Require an unambiguous bootstrap host
+      ansible.builtin.assert:
+        that: lab_localhost.json.count <= 1
+    - name: Create or configure the local bootstrap host
+      ansible.builtin.uri:
+        url: >-
+          {{ aap_api ~ '/inventories/' ~ (lab_installed_inventory.id | string) ~ '/hosts/'
+          if lab_localhost.json.count == 0 else aap_api ~ '/hosts/' ~ (lab_localhost.json.results[0].id | string) ~ '/' }}
+        method: '{{ "POST" if lab_localhost.json.count == 0 else "PATCH" }}'
+        body:
+          name: localhost
+          enabled: true
+          variables: '{{ {"ansible_connection": "local", "ansible_python_interpreter": "/usr/bin/python3.12"} | to_json }}'
+        status_code: [200, 201]
+      no_log: true
+    - name: Define separate build and teardown launch forms
+      ansible.builtin.include_tasks: lab-definitions.yml
+    - name: Install each independent lab job template
+      ansible.builtin.include_tasks: lab-template.yml
+      loop: '{{ lab_template_definitions }}'
+      loop_control:
+        loop_var: lab_template
+    - name: Retain installed AAP resource identities
+      ansible.builtin.set_stats:
+        per_host: false
+        aggregate: false
+        data:
+          phpdetect_aap_lab_setup:
+            inventory_id: '{{ lab_installed_inventory.id }}'
+            project_id: '{{ lab_installed_project.id }}'
+            execution_environment_id: '{{ lab_installed_ee.id }}'
+            templates: '{{ lab_installed_templates }}'
+    - name: Report setup completion
+      ansible.builtin.debug:
+        msg: Installed phpdetect - Build AWS lab and phpdetect - Destroy AWS lab. Launch Build AWS lab with its survey to create EC2 resources. No AWS jobs were launched by this installer.

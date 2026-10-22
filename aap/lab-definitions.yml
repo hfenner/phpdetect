@@ -1,0 +1,46 @@
+---
+- name: Define the common lab survey fields
+  ansible.builtin.set_fact:
+    lab_common_survey:
+      - question_name: Lab ID
+        question_description: Lowercase identifier, starting with a letter; reusing an ID rebuilds that lab.
+        variable: phpdetect_lab_id
+        type: text
+        required: true
+        min: 1
+        max: 31
+        default: '{{ aap_lab_default_id | default("training") }}'
+      - question_name: AWS region
+        question_description: Region containing your existing EC2 key pair and lab stack.
+        variable: phpdetect_lab_region
+        type: text
+        required: true
+        min: 1
+        max: 64
+        default: '{{ aap_lab_default_region | default("us-east-1") }}'
+    lab_installed_templates: []
+- name: Define separate build and teardown templates
+  ansible.builtin.set_fact:
+    lab_template_definitions:
+      - name: phpdetect - Build AWS lab
+        playbook: playbooks/build-lab-aws.yml
+        credential_ids: '{{ [aap_lab_aws_credential_id | int, aap_lab_machine_credential_id | int] }}'
+        extra_vars: '{{ aap_lab_build_extra_vars | default({}) }}'
+        survey: >-
+          {{ lab_common_survey + [
+          {'question_name': 'Existing EC2 key pair', 'question_description': 'Must match the attached Machine credential private key.',
+           'variable': 'phpdetect_lab_key_name', 'type': 'text', 'required': true, 'min': 1, 'max': 255,
+           'default': aap_lab_default_key_name | default('')},
+          {'question_name': 'AAP execution-node SSH source CIDR', 'question_description': 'Public egress IPv4 CIDR, /24 through /32. No inbound HTTP is opened.',
+           'variable': 'phpdetect_lab_ssh_cidr', 'type': 'text', 'required': true, 'min': 1, 'max': 18,
+           'default': aap_lab_default_ssh_cidr | default('')},
+          {'question_name': 'Confirm lab creation', 'question_description': 'Retype the Lab ID. Launching creates billed AWS resources and vulnerable test fixtures.',
+           'variable': 'phpdetect_lab_confirm', 'type': 'text', 'required': true, 'min': 1, 'max': 31, 'default': ''}] }}
+      - name: phpdetect - Destroy AWS lab
+        playbook: playbooks/destroy-lab-aws.yml
+        credential_ids: '{{ [aap_lab_aws_credential_id | int] }}'
+        extra_vars: {}
+        survey: >-
+          {{ lab_common_survey + [
+          {'question_name': 'Confirm lab deletion', 'question_description': 'Retype the Lab ID. Removes that lab stack, instance, disk and network.',
+           'variable': 'phpdetect_lab_destroy_confirm', 'type': 'text', 'required': true, 'min': 1, 'max': 31, 'default': ''}] }}

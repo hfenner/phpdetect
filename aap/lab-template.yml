@@ -1,0 +1,72 @@
+---
+- name: Register the lab template with launch overrides disabled
+  ansible.builtin.include_tasks: resource.yml
+  vars:
+    resource_endpoint: job_templates
+    resource_fact: lab_installed_template
+    resource_payload:
+      name: '{{ lab_template.name }}'
+      project: '{{ lab_installed_project.id }}'
+      inventory: '{{ lab_installed_inventory.id }}'
+      execution_environment: '{{ lab_installed_ee.id }}'
+      playbook: '{{ lab_template.playbook }}'
+      job_type: run
+      survey_enabled: true
+      ask_limit_on_launch: false
+      ask_variables_on_launch: false
+      ask_inventory_on_launch: false
+      ask_credential_on_launch: false
+      ask_execution_environment_on_launch: false
+      ask_scm_branch_on_launch: false
+      ask_job_type_on_launch: false
+      ask_tags_on_launch: false
+      ask_skip_tags_on_launch: false
+      ask_job_slice_count_on_launch: false
+      become_enabled: false
+      limit: ''
+      job_tags: ''
+      skip_tags: ''
+      allow_simultaneous: false
+      job_slice_count: 1
+      timeout: 3600
+      extra_vars: '{{ lab_template.extra_vars | to_json }}'
+- name: Read current attached credential identities
+  ansible.builtin.uri:
+    url: '{{ aap_api }}/job_templates/{{ lab_installed_template.id }}/credentials/?page_size=200'
+  register: lab_template_credentials
+  no_log: true
+- name: Require all credential associations to be visible before reconciliation
+  ansible.builtin.assert:
+    that: lab_template_credentials.json.next == none
+- name: Remove stale credential associations from this managed template
+  ansible.builtin.uri:
+    url: '{{ aap_api }}/job_templates/{{ lab_installed_template.id }}/credentials/'
+    method: POST
+    body:
+      id: '{{ item | int }}'
+      disassociate: true
+    status_code: 204
+  loop: '{{ lab_template_credentials.json.results | map(attribute="id") | list | difference(lab_template.credential_ids) }}'
+  no_log: true
+- name: Attach the required existing credentials
+  ansible.builtin.uri:
+    url: '{{ aap_api }}/job_templates/{{ lab_installed_template.id }}/credentials/'
+    method: POST
+    body:
+      id: '{{ item | int }}'
+    status_code: 204
+  loop: '{{ lab_template.credential_ids | difference(lab_template_credentials.json.results | map(attribute="id") | list) }}'
+  no_log: true
+- name: Install the launch survey
+  ansible.builtin.uri:
+    url: '{{ aap_api }}/job_templates/{{ lab_installed_template.id }}/survey_spec/'
+    method: POST
+    body:
+      name: '{{ lab_template.name }}'
+      description: Dedicated disposable AWS lab. Build and destruction are independent launches.
+      spec: '{{ lab_template.survey }}'
+    status_code: 200
+  no_log: true
+- name: Record the installed template
+  ansible.builtin.set_fact:
+    lab_installed_templates: '{{ lab_installed_templates + [{"name": lab_template.name, "id": lab_installed_template.id}] }}'

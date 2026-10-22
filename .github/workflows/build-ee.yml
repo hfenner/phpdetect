@@ -43,6 +43,8 @@ jobs:
             ansible-playbook playbooks/update.yml --syntax-check
             ansible-playbook playbooks/refresh-ncsc.yml --syntax-check
             ansible-playbook aap/install.yml --syntax-check
+            ansible-playbook aap/install-lab.yml --syntax-check
+            ansible-playbook tests/lab-aap.yml
             ansible-playbook playbooks/build-lab-aws.yml --syntax-check
             ansible-playbook playbooks/destroy-lab-aws.yml --syntax-check
             ansible-playbook tests/lab.yml
