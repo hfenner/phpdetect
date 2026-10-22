@@ -17,11 +17,14 @@ html=html.replace('OpenShift authenticated','Public demo · Fictional data')
  .replace('OpenShift deployment','GitHub Pages demo')
  .replace('<main>','<main><div class="notice" role="note"><b>PUBLIC DEMO — FICTIONAL DATA.</b> Hosts, versions, findings and patch-status examples are illustrative, not vendor advisories or live assessments. <a href="https://github.com/hfenner/phpdetect">View repository</a>.</div>')
  .replace('Exposure overview</title>','Public demo</title>');
-fs.writeFileSync(path.join(out,'index.html'),html);
+
 let js=fs.readFileSync(path.join(dashboard,'app.js'),'utf8');
 js=js.replace('`AAP discovery${','`Demo snapshot${')
  .replace("source.status && source.status!=='successful'", "source.status && source.status!=='fictional sample' && source.status!=='successful'");
 fs.writeFileSync(path.join(out,'app.js'),js);
+const version=require('node:crypto').createHash('sha256').update(js).digest('hex').slice(0,12);
+html=html.replace('src="app.js"','src="app.js?v='+version+'"');
+fs.writeFileSync(path.join(out,'index.html'),html);
 fs.copyFileSync(path.join(dashboard,'styles.css'),path.join(out,'styles.css'));
 fs.writeFileSync(path.join(out,'data.json'),JSON.stringify(sample,null,2)+'\n');
 fs.writeFileSync(path.join(out,'.nojekyll'),'');
