@@ -27,11 +27,21 @@
           - lab_ids.stdout_lines | length == 3
           - (item.stdout | from_json)[0].State.Running
           - (item.stdout | from_json)[0].HostConfig.ReadonlyRootfs
-          - (item.stdout | from_json)[0].HostConfig.PortBindings['80/tcp'][0].HostIp == '127.0.0.1'
+          - (item.stdout | from_json)[0].HostConfig.PortBindings | default({}, true) | length == 0
           - (item.stdout | from_json)[0].HostConfig.Memory > 0
       loop: '{{ fixture_inspections.results }}'
       loop_control:
         label: '{{ item.item }}'
+    - name: Inspect the actual host listeners
+      ansible.builtin.command: ss -ltnH
+      register: host_listeners
+      changed_when: false
+    - name: Require every fixture listener to be loopback-only
+      ansible.builtin.assert:
+        that:
+          - host_listeners.stdout is search('127[.]0[.]0[.]1:' ~ (item.port | string))
+          - not (host_listeners.stdout is search('(?:0[.]0[.]0[.]0|\*|\[::\]):' ~ (item.port | string)))
+      loop: '{{ lab_fixtures }}'
     - name: Inspect the isolated Docker network
       ansible.builtin.command:
         argv: [docker, network, inspect, phpdetect-lab_isolated]

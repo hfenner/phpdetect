@@ -28,16 +28,19 @@
     lab_fixtures:
       - name: vulnerable
         port: 18081
+        address: 172.30.77.11
         version: 8.4.26
         image: docker.io/library/php@sha256:60111400ff77bdc44fa79b4f072afe49a42abba71e0846ad496be4761dc9c11a
         intent: unpatched upstream PHP
       - name: patched
         port: 18082
+        address: 172.30.77.12
         version: 8.4.27
         image: docker.io/library/php@sha256:a0b75cee7023ba2c127138dcad2ecc6ec7e09435534645e70450f29f24ea2a5a
         intent: fixed upstream control
       - name: unmapped
         port: 18083
+        address: 172.30.77.13
         version: 8.4.26
         image: docker.io/library/php@sha256:60111400ff77bdc44fa79b4f072afe49a42abba71e0846ad496be4761dc9c11a
         intent: intentionally lacks an authoritative runtime mapping
@@ -52,13 +55,12 @@
     lab_compose_services: >-
       {{ lab_compose_services | combine({item.name: {
       'image': item.image,
-      'ports': ['127.0.0.1:' ~ (item.port | string) ~ ':80'],
       'volumes': ['/opt/phpdetect-lab/www:/var/www/html:ro'],
       'restart': 'no', 'read_only': true,
       'tmpfs': ['/tmp', '/var/run/apache2', '/var/lock/apache2'],
       'security_opt': ['no-new-privileges:true'],
       'mem_limit': '384m', 'cpus': 0.5, 'pids_limit': 128,
-      'networks': ['isolated']}}) }}
+      'networks': {'isolated': {'ipv4_address': item.address}}}}) }}
   loop: '{{ lab_fixtures }}'
 - name: Write the vulnerable starting configuration
   ansible.builtin.copy:
@@ -66,7 +68,8 @@
     mode: '0644'
     content: >-
       {{ {'name': 'phpdetect-lab', 'services': lab_compose_services,
-      'networks': {'isolated': {'internal': true}}} | to_nice_yaml }}
+      'networks': {'isolated': {'internal': true,
+      'ipam': {'config': [{'subnet': '172.30.77.0/24'}]}}}} | to_nice_yaml }}
 - name: Write the separate fixed configuration for update testing
   ansible.builtin.copy:
     dest: /opt/phpdetect-lab/compose.fixed.yml
@@ -74,12 +77,46 @@
     content: >-
       {{ {'name': 'phpdetect-lab', 'services': lab_compose_services | combine({
       'vulnerable': lab_compose_services.vulnerable | combine({'image': lab_fixtures[1].image})}),
-      'networks': {'isolated': {'internal': true}}} | to_nice_yaml }}
+      'networks': {'isolated': {'internal': true,
+      'ipam': {'config': [{'subnet': '172.30.77.0/24'}]}}}} | to_nice_yaml }}
 - name: Start the lab fixtures with their immutable images
   ansible.builtin.command:
     argv: [docker, compose, '-f', /opt/phpdetect-lab/compose.yml, up, '-d', '--no-build']
   register: lab_compose_start
   changed_when: "'Started' in lab_compose_start.stderr or 'Created' in lab_compose_start.stderr or 'Recreated' in lab_compose_start.stderr"
+# Docker does not publish host ports for an internal-only network. A host-side
+# nginx listener provides loopback access while containers remain egress-isolated.
+- name: Install the host-side loopback proxy
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    policy_rc_d: 101
+- name: Remove the stock public nginx listener on this disposable host
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+- name: Configure loopback-only access to the isolated fixture addresses
+  ansible.builtin.copy:
+    dest: /etc/nginx/conf.d/phpdetect-lab-proxy.conf
+    mode: '0644'
+    content: |
+      {% for fixture in lab_fixtures %}
+      server {
+        listen 127.0.0.1:{{ fixture.port }};
+        server_name localhost;
+        location / {
+          proxy_pass http://{{ fixture.address }}:80;
+        }
+      }
+      {% endfor %}
+- name: Validate nginx configuration
+  ansible.builtin.command: nginx -t
+  changed_when: false
+- name: Start the loopback proxy
+  ansible.builtin.service:
+    name: nginx
+    state: restarted
+    enabled: true
 - name: Verify the actual PHP version serving HTTP for every fixture
   ansible.builtin.uri:
     url: 'http://127.0.0.1:{{ item.port }}/'

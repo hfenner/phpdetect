@@ -27,7 +27,7 @@ ansible-playbook -i localhost, playbooks/build-lab-aws.yml \
   -e @/private/path/aws-lab.yml -e phpdetect_lab_confirm=training
 ```
 
-This creates billed AWS resources: one t3.small by default, a 16 GiB encrypted root disk, and a public IPv4 address. There is no NAT gateway or load balancer. The instance uses IMDSv2 and no IAM instance profile. PHP containers use an internal Docker network, read-only root filesystems, resource limits, and loopback-only HTTP bindings. Only a harmless JSON runtime endpoint is deployed.
+This creates billed AWS resources: one t3.small by default, a 16 GiB encrypted root disk, and a public IPv4 address. There is no NAT gateway or load balancer. The instance uses IMDSv2 and no IAM instance profile. PHP containers use an internal Docker network (172.30.77.0/24), read-only root filesystems, and resource limits. They publish no Docker host ports. A host-side nginx proxy binds only to loopback and forwards to their fixed internal addresses. Only a harmless JSON runtime endpoint is deployed.
 
 ## Discover and test updates
 
