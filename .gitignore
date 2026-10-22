@@ -1,0 +1,5 @@
+# Keep real inventory and incident evidence out of this public repository.
+/private/
+/evidence/
+/inventory.json
+.DS_Store
