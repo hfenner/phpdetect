@@ -24,3 +24,21 @@ assert.match(findings[1].detail,/candidate/);
 assert.match(findings[2].detail,/PHP presence unverified/);
 assert.match(detectionFindings([{host:'win',platform:'Windows',runtimes:[{artifact:'C:\\PHP\\php.exe',processes:[]}]}])[0].detail,/source was not recorded/);
 assert.ok(detectionChecks.length>=16);
+const {manualChecks,manualFinding,shQuote,psQuote}=require('../dashboard/app.js');
+const {spawnSync}=require('node:child_process');
+assert.equal(manualChecks.length,detectionChecks.length,'Every check needs reproduction instructions');
+for (const i of [0,1,2,3,4,5,6,7,8,13,14,15]) {
+  const result=spawnSync('bash',['-n'],{input:manualChecks[i][1],encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);
+}
+const hostile="/opt/php'; $(touch /tmp/should-not-run) #";
+const quoted=spawnSync('bash',['-c','printf %s '+shQuote(hostile)],{encoding:'utf8'});
+assert.equal(quoted.stdout,hostile,'Report paths must stay literal shell data');
+assert.equal(psQuote("C:\\Bob's\\php.exe"),"'C:\\Bob''s\\php.exe'");
+const mapped=manualFinding({host:'rhel'},hostile,'Explicit runtime mapping');
+assert.equal(spawnSync('bash',['-n'],{input:mapped.command,encoding:'utf8'}).status,0);
+const container=manualFinding({host:'linux'},'/display-name','Docker inventory + PHP CLI probe','abc123');
+assert.match(container.command,/docker exec 'abc123' php -n -v/);
+assert.doesNotMatch(container.command,/display-name/);
+assert.ok(detectionFindings([host]).every(f=>f.manual.command));
+console.log('Manual reproduction coverage, quoting and Bash syntax checks passed.');
