@@ -6,7 +6,6 @@
     resource_fact: installed_template
     resource_payload:
       name: '{{ template.name }}'
-      organization: '{{ aap_organization_id | int }}'
       project: '{{ installed_project.id }}'
       inventory: '{{ aap_inventory_id | int }}'
       execution_environment: '{{ installed_ee.id }}'
@@ -16,6 +15,8 @@
       ask_limit_on_launch: false
       ask_variables_on_launch: false
       ask_inventory_on_launch: false
+      become_enabled: false
+      limit: ''
       allow_simultaneous: false
       job_slice_count: 1
       extra_vars: '{{ {"phpdetect_publish_job_artifacts": true} | to_json }}'

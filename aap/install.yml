@@ -60,6 +60,14 @@
           scm_update_on_launch: true
           scm_clean: true
           scm_delete_on_update: false
+    - name: Wait for any automatic project update to finish
+      ansible.builtin.uri:
+        url: '{{ aap_api }}/projects/{{ installed_project.id }}/'
+      register: project_state
+      until: project_state.json.status not in ['new', 'pending', 'waiting', 'running', 'updating']
+      retries: 60
+      delay: 5
+      no_log: true
     - name: Synchronize project content
       ansible.builtin.uri:
         url: '{{ aap_api }}/projects/{{ installed_project.id }}/update/'

@@ -1,0 +1,27 @@
+---
+- name: Verify Runner retained discovery evidence for AAP
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Find Runner custom-stat events
+      ansible.builtin.find:
+        paths: /tmp/phpdetect-runner/smoke/job_events
+        patterns: '*.json'
+      register: event_files
+    - name: Read custom-stat results from Runner events
+      ansible.builtin.set_fact:
+        artifact_events: '{{ artifact_events | default([]) + [event.event_data.res.ansible_stats] }}'
+      vars:
+        event: '{{ lookup("ansible.builtin.file", item.path) | from_json }}'
+      loop: '{{ event_files.files }}'
+      loop_control:
+        label: '{{ item.path | basename }}'
+      when: event.get('event_data', {}).get('res', {}).get('ansible_stats', {}).get('data', {}).get('phpdetect_discovery', {}) | length > 0
+    - name: Require both the unknown seed and final evidence artifact
+      ansible.builtin.assert:
+        that:
+          - artifact_events | length == 2
+          - artifact_events | selectattr('per_host', 'equalto', false) | list | length == 2
+          - artifact_events | map(attribute='data.phpdetect_discovery.status') | sort == ['complete', 'incomplete']
+          - (artifact_events | selectattr('data.phpdetect_discovery.status', 'equalto', 'complete') | first).data.phpdetect_discovery.hosts | length == 1
+          - (artifact_events | selectattr('data.phpdetect_discovery.status', 'equalto', 'complete') | first).data.phpdetect_discovery.hosts[0].patch_status == 'unknown'

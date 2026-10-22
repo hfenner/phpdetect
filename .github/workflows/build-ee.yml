@@ -41,7 +41,8 @@ jobs:
             ansible-playbook playbooks/update.yml --syntax-check
             ansible-playbook playbooks/refresh-ncsc.yml --syntax-check
             ansible-playbook aap/install.yml --syntax-check
-            ansible-playbook -i tests/local.yml playbooks/discover.yml -e phpdetect_publish_job_artifacts=true
+            ansible-runner run /runner --project-dir /runner/project --inventory /runner/project/tests/local.yml --artifact-dir /tmp/phpdetect-runner --ident smoke -p playbooks/discover.yml --cmdline "-e phpdetect_publish_job_artifacts=true"
+            ansible-playbook tests/aap-artifacts.yml
           '
       - name: Publish tested image to GitHub Container Registry
         env:
