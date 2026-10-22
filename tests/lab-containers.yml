@@ -1,0 +1,56 @@
+---
+- name: Exercise real lab containers on an ephemeral CI host
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: true
+  vars:
+    phpdetect_lab_id: ci
+    phpdetect_lab_install_docker: false
+  tasks:
+    - name: Build and verify the real fixtures
+      ansible.builtin.include_tasks: ../playbooks/lab/containers.yml
+    - name: Inspect only containers belonging to this lab
+      ansible.builtin.command:
+        argv: [docker, compose, '-f', /opt/phpdetect-lab/compose.yml, ps, '-q']
+      register: lab_ids
+      changed_when: false
+    - name: Read fixture isolation settings
+      ansible.builtin.command:
+        argv: [docker, inspect, '{{ item }}']
+      loop: '{{ lab_ids.stdout_lines }}'
+      register: fixture_inspections
+      changed_when: false
+    - name: Require three running and restricted fixtures
+      ansible.builtin.assert:
+        that:
+          - lab_ids.stdout_lines | length == 3
+          - (item.stdout | from_json)[0].State.Running
+          - (item.stdout | from_json)[0].HostConfig.ReadonlyRootfs
+          - (item.stdout | from_json)[0].HostConfig.PortBindings['80/tcp'][0].HostIp == '127.0.0.1'
+          - (item.stdout | from_json)[0].HostConfig.Memory > 0
+      loop: '{{ fixture_inspections.results }}'
+      loop_control:
+        label: '{{ item.item }}'
+    - name: Inspect the isolated Docker network
+      ansible.builtin.command:
+        argv: [docker, network, inspect, phpdetect-lab_isolated]
+      register: isolated_network
+      changed_when: false
+    - name: Require no container network egress
+      ansible.builtin.assert:
+        that: (isolated_network.stdout | from_json)[0].Internal
+    - name: Run the actual PHP discovery collector
+      ansible.builtin.include_tasks:
+        file: ../playbooks/tasks/collect.yml
+        apply:
+          no_log: true
+      vars:
+        assessment_runtimes: []
+        phpdetect_container_cli_probe: true
+    - name: Require discovery to find all three containers without clearing them
+      ansible.builtin.assert:
+        that:
+          - assessment_report.containers | length == 3
+          - assessment_report.containers | rejectattr('patch_status', 'equalto', 'unknown') | list | length == 0
+          - assessment_report.container_cli_evidence | length == 3

@@ -1,0 +1,48 @@
+---
+- name: Verify lab isolation and preflight rejection without AWS calls
+  hosts: localhost
+  gather_facts: false
+  vars:
+    stack: '{{ (lookup("ansible.builtin.file", playbook_dir ~ "/../playbooks/build-lab-aws.yml") | from_yaml)[0].vars.lab_stack_template }}'
+    phpdetect_lab_id: test
+    phpdetect_lab_confirm: test
+    phpdetect_lab_region: us-east-1
+    phpdetect_lab_key_name: test-existing-key
+    phpdetect_lab_ssh_cidr: 203.0.113.10/32
+  tasks:
+    - name: Accept a valid restricted lab configuration
+      ansible.builtin.include_tasks: ../playbooks/lab/validate.yml
+    - name: Check the cloud resource isolation boundaries
+      ansible.builtin.assert:
+        that:
+          - stack.Resources.SecurityGroup.Properties.SecurityGroupIngress | length == 1
+          - stack.Resources.SecurityGroup.Properties.SecurityGroupIngress[0].FromPort == 22
+          - stack.Resources.SecurityGroup.Properties.SecurityGroupIngress[0].ToPort == 22
+          - stack.Resources.Host.Properties.MetadataOptions.HttpTokens == 'required'
+          - stack.Resources.Host.Properties.MetadataOptions.HttpPutResponseHopLimit == 1
+          - "'IamInstanceProfile' not in stack.Resources.Host.Properties"
+          - stack.Resources.Host.Properties.BlockDeviceMappings[0].Ebs.Encrypted
+          - stack.Resources.Host.Properties.BlockDeviceMappings[0].Ebs.DeleteOnTermination
+    - name: Attempt an unrestricted SSH CIDR
+      block:
+        - name: Exercise the real input guard
+          ansible.builtin.include_tasks: ../playbooks/lab/validate.yml
+          vars:
+            phpdetect_lab_ssh_cidr: 0.0.0.0/0
+        - name: Record unexpected acceptance
+          ansible.builtin.set_fact:
+            unsafe_accepted: true
+      rescue:
+        - name: Record expected rejection
+          ansible.builtin.set_fact:
+            unsafe_rejected: true
+    - name: Require unsafe input to be rejected
+      ansible.builtin.assert:
+        that:
+          - unsafe_rejected | default(false)
+          - not unsafe_accepted | default(false)
+    - name: Export the actual inline CloudFormation template for validation
+      ansible.builtin.copy:
+        dest: /tmp/phpdetect-lab-cloudformation.yml
+        mode: '0600'
+        content: '{{ stack | to_nice_yaml }}'

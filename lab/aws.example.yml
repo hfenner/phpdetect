@@ -1,0 +1,9 @@
+---
+phpdetect_lab_id: training
+phpdetect_lab_region: us-east-1
+phpdetect_lab_key_name: REPLACE_WITH_EXISTING_EC2_KEY_PAIR
+# Public egress address of your AAP execution node, not your browser workstation.
+phpdetect_lab_ssh_cidr: 203.0.113.10/32
+phpdetect_lab_instance_type: t3.small
+# Supply phpdetect_lab_confirm=training at launch to build.
+# Supply phpdetect_lab_destroy_confirm=training to the separate teardown playbook.

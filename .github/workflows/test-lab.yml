@@ -1,0 +1,36 @@
+name: Test disposable PHP lab fixtures
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - playbooks/lab/**
+      - playbooks/build-lab-aws.yml
+      - playbooks/destroy-lab-aws.yml
+      - tests/lab*.yml
+      - .github/workflows/test-lab.yml
+permissions:
+  contents: read
+jobs:
+  fixtures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test tools
+        run: pip install 'ansible-core>=2.19,<2.20' cfn-lint
+      - name: Test input guards and validate the AWS template without creating resources
+        run: |
+          ansible-playbook tests/lab.yml
+          cfn-lint /tmp/phpdetect-lab-cloudformation.yml
+      - name: Build fixtures and exercise actual discovery
+        run: ansible-playbook tests/lab-containers.yml
+      - name: Remove lab containers
+        if: always()
+        run: |
+          if test -f /opt/phpdetect-lab/compose.yml; then
+            sudo docker compose -f /opt/phpdetect-lab/compose.yml down --volumes
+          fi

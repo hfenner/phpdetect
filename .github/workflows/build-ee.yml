@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - execution-environment.yml
+      - requirements.yml
+      - lab/**
       - .github/workflows/build-ee.yml
       - playbooks/**
       - tests/**
@@ -41,6 +43,9 @@ jobs:
             ansible-playbook playbooks/update.yml --syntax-check
             ansible-playbook playbooks/refresh-ncsc.yml --syntax-check
             ansible-playbook aap/install.yml --syntax-check
+            ansible-playbook playbooks/build-lab-aws.yml --syntax-check
+            ansible-playbook playbooks/destroy-lab-aws.yml --syntax-check
+            ansible-playbook tests/lab.yml
             ansible-runner run /runner --project-dir /runner/project --inventory /runner/project/tests/local.yml --artifact-dir /tmp/phpdetect-runner --ident smoke -p playbooks/discover.yml --cmdline "-e phpdetect_publish_job_artifacts=true"
             ansible-playbook tests/aap-artifacts.yml
           '

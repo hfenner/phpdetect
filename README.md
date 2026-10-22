@@ -56,6 +56,10 @@ Package updates require `python3-apt` or `python3-dnf` on the target, supported 
 
 **Supported scope:** automated Linux package discovery/remediation and Docker inventory/Compose remediation. Kubernetes, Windows/IIS, managed hosting, arbitrary source builds, and vendor appliances are not automatically remediated. Product records remain unknown pending a dedicated vendor integration; unsupported update adapters fail explicitly. NCSC's list is not a complete asset inventory. Procfs restrictions may require `phpdetect_become: true` for conclusive Linux runtime evidence.
 
+## Disposable AWS lab
+
+Use [Build PHP lab](playbooks/build-lab-aws.yml) and the separate [teardown playbook](playbooks/destroy-lab-aws.yml) to provision an isolated AWS test host with vulnerable, fixed, and unmapped PHP fixtures. See [lab settings and AAP setup](lab/README.md). An optional exact vendor-package fixture exercises host-level classification.
+
 ## Validation
 
 ```sh

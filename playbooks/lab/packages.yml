@@ -1,0 +1,83 @@
+---
+# Optional package fixture is pinned to operator-reviewed vendor revisions. No
+# blanket downgrade or inference from upstream version strings is performed.
+- name: Add the signed dated Ubuntu archive
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/phpdetect-lab-snapshot.list
+    mode: '0644'
+    content: |
+      deb [check-valid-until=no signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://snapshot.ubuntu.com/ubuntu/{{ phpdetect_lab_package.snapshot }}/ noble main universe
+      deb [check-valid-until=no signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://snapshot.ubuntu.com/ubuntu/{{ phpdetect_lab_package.snapshot }}/ noble-updates main universe
+      deb [check-valid-until=no signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://snapshot.ubuntu.com/ubuntu/{{ phpdetect_lab_package.snapshot }}/ noble-security main universe
+- name: Keep the fixture's PHP revisions stable until an explicit update
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/99phpdetect-lab
+    mode: '0644'
+    content: |
+      Unattended-Upgrade::Package-Blacklist { "php.*"; };
+- name: Build the exact package installation list
+  ansible.builtin.set_fact:
+    lab_package_specs: '{{ lab_package_specs | default([]) + [item.key ~ "=" ~ item.value] }}'
+  loop: '{{ phpdetect_lab_package.evidence.packages | dict2items }}'
+- name: Install only the selected vendor fixture revisions
+  ansible.builtin.apt:
+    name: '{{ lab_package_specs + ["nginx"] }}'
+    state: present
+    update_cache: true
+    allow_downgrade: true
+    policy_rc_d: 101
+- name: Remove the stock nginx listener on this disposable VM
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+- name: Configure a loopback-only PHP-FPM site
+  ansible.builtin.copy:
+    dest: /etc/nginx/conf.d/phpdetect-lab.conf
+    mode: '0644'
+    content: |
+      server {
+        listen 127.0.0.1:18080;
+        server_name localhost;
+        root /opt/phpdetect-lab/www;
+        index index.php;
+        location ~ \.php$ {
+          include fastcgi_params;
+          fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+          fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        }
+      }
+- name: Start the serving runtime and site
+  ansible.builtin.service:
+    name: '{{ item }}'
+    state: restarted
+    enabled: true
+  loop: [php8.3-fpm, nginx]
+- name: Read exact installed package revisions
+  ansible.builtin.command:
+    argv: [dpkg-query, '-W', '-f=${Version}', '{{ item.key }}']
+  loop: '{{ phpdetect_lab_package.evidence.packages | dict2items }}'
+  register: lab_package_versions
+  changed_when: false
+- name: Require exact agreement with the reviewed vendor evidence
+  ansible.builtin.assert:
+    that: item.stdout == item.item.value
+  loop: '{{ lab_package_versions.results }}'
+  loop_control:
+    label: '{{ item.item.key }}'
+- name: Verify the package fixture is actually serving PHP
+  ansible.builtin.uri:
+    url: http://127.0.0.1:18080/
+    use_proxy: false
+  register: lab_package_http
+  until: lab_package_http.status | default(0) == 200
+  retries: 15
+  delay: 2
+- name: Add mapped and deliberately unverified runtime cases
+  ansible.builtin.set_fact:
+    lab_discovery_vars: >-
+      {{ lab_discovery_vars | combine({'phpdetect_runtimes': [
+      {'id': 'lab-vendor-fpm', 'kind': 'package', 'exposure': 'internal',
+      'sites': ['http://127.0.0.1:18080/'], 'artifact': '/usr/sbin/php-fpm8.3',
+      'evidence': phpdetect_lab_package.evidence},
+      {'id': 'lab-no-evidence', 'kind': 'package', 'exposure': 'internal',
+      'sites': ['http://127.0.0.1:18080/'], 'artifact': '/usr/sbin/php-fpm8.3', 'evidence': {}}]}) }}

@@ -1,0 +1,202 @@
+---
+- name: Provision a dedicated disposable PHP lab on AWS
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    lab_stack_name: 'phpdetect-lab-{{ phpdetect_lab_id }}'
+    lab_stack_template:
+      AWSTemplateFormatVersion: '2010-09-09'
+      Description: Disposable phpdetect lab; SSH only, no inbound HTTP, no instance IAM role
+      Parameters:
+        Ami:
+          Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+          Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
+        KeyName:
+          Type: AWS::EC2::KeyPair::KeyName
+        SshCidr:
+          Type: String
+        InstanceType:
+          Type: String
+          Default: t3.small
+      Resources:
+        Vpc:
+          Type: AWS::EC2::VPC
+          Properties:
+            CidrBlock: 10.77.0.0/16
+            EnableDnsSupport: true
+            EnableDnsHostnames: true
+        Gateway:
+          Type: AWS::EC2::InternetGateway
+        GatewayAttachment:
+          Type: AWS::EC2::VPCGatewayAttachment
+          Properties:
+            VpcId: {Ref: Vpc}
+            InternetGatewayId: {Ref: Gateway}
+        Subnet:
+          Type: AWS::EC2::Subnet
+          Properties:
+            VpcId: {Ref: Vpc}
+            CidrBlock: 10.77.1.0/24
+            MapPublicIpOnLaunch: true
+        Routes:
+          Type: AWS::EC2::RouteTable
+          Properties:
+            VpcId: {Ref: Vpc}
+        InternetRoute:
+          Type: AWS::EC2::Route
+          DependsOn: GatewayAttachment
+          Properties:
+            RouteTableId: {Ref: Routes}
+            DestinationCidrBlock: 0.0.0.0/0
+            GatewayId: {Ref: Gateway}
+        RouteAssociation:
+          Type: AWS::EC2::SubnetRouteTableAssociation
+          Properties:
+            SubnetId: {Ref: Subnet}
+            RouteTableId: {Ref: Routes}
+        SecurityGroup:
+          Type: AWS::EC2::SecurityGroup
+          Properties:
+            GroupDescription: SSH from the specified AAP execution-node egress only
+            VpcId: {Ref: Vpc}
+            SecurityGroupIngress:
+              - IpProtocol: tcp
+                FromPort: 22
+                ToPort: 22
+                CidrIp: {Ref: SshCidr}
+            SecurityGroupEgress:
+              - IpProtocol: '-1'
+                CidrIp: 0.0.0.0/0
+        Host:
+          Type: AWS::EC2::Instance
+          DependsOn: InternetRoute
+          Properties:
+            ImageId: {Ref: Ami}
+            InstanceType: {Ref: InstanceType}
+            KeyName: {Ref: KeyName}
+            SubnetId: {Ref: Subnet}
+            SecurityGroupIds: [{Ref: SecurityGroup}]
+            MetadataOptions:
+              HttpTokens: required
+              HttpPutResponseHopLimit: 1
+            BlockDeviceMappings:
+              - DeviceName: /dev/sda1
+                Ebs:
+                  VolumeSize: 16
+                  VolumeType: gp3
+                  Encrypted: true
+                  DeleteOnTermination: true
+            Tags:
+              - Key: Name
+                Value: {Ref: 'AWS::StackName'}
+              - Key: ManagedBy
+                Value: phpdetect-lab
+      Outputs:
+        PublicIp:
+          Value: {'Fn::GetAtt': [Host, PublicIp]}
+        InstanceId:
+          Value: {Ref: Host}
+  tasks:
+    - name: Validate lab inputs before creating billed AWS resources
+      ansible.builtin.include_tasks: lab/validate.yml
+    - name: Inspect any existing stack with this lab name
+      amazon.aws.cloudformation_info:
+        stack_name: '{{ lab_stack_name }}'
+        region: '{{ phpdetect_lab_region }}'
+      register: lab_existing
+    - name: Refuse to adopt a stack owned by another application
+      ansible.builtin.assert:
+        that:
+          - lab_existing.cloudformation[lab_stack_name].stack_tags.ManagedBy == 'phpdetect-lab'
+          - lab_existing.cloudformation[lab_stack_name].stack_tags.LabId == phpdetect_lab_id
+      when: lab_stack_name in lab_existing.cloudformation
+    - name: Create the dedicated lab stack
+      amazon.aws.cloudformation:
+        stack_name: '{{ lab_stack_name }}'
+        region: '{{ phpdetect_lab_region }}'
+        state: present
+        template_body: '{{ lab_stack_template | to_json }}'
+        template_parameters:
+          KeyName: '{{ phpdetect_lab_key_name }}'
+          SshCidr: '{{ phpdetect_lab_ssh_cidr }}'
+          InstanceType: '{{ phpdetect_lab_instance_type | default("t3.small") }}'
+        tags:
+          ManagedBy: phpdetect-lab
+          LabId: '{{ phpdetect_lab_id }}'
+          Purpose: Disposable PHP detection fixtures
+      register: lab_stack
+    - name: Retain resource identity even if guest configuration later fails
+      ansible.builtin.set_stats:
+        per_host: false
+        aggregate: false
+        data:
+          phpdetect_lab:
+            stack: '{{ lab_stack_name }}'
+            region: '{{ phpdetect_lab_region }}'
+            instance_id: '{{ lab_stack.stack_outputs.InstanceId }}'
+            address: '{{ lab_stack.stack_outputs.PublicIp }}'
+            status: provisioning
+    - name: Add the lab host to this job inventory
+      ansible.builtin.add_host:
+        name: '{{ lab_stack_name }}'
+        groups: [phpdetect_lab_targets, php_targets]
+        ansible_host: '{{ lab_stack.stack_outputs.PublicIp }}'
+        ansible_user: ubuntu
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_ssh_common_args: -o StrictHostKeyChecking=accept-new
+        phpdetect_become: true
+        phpdetect_container_cli_probe: true
+
+- name: Build PHP fixtures on the disposable EC2 host
+  hosts: phpdetect_lab_targets
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Wait for SSH and Python
+      ansible.builtin.wait_for_connection:
+        timeout: 600
+    - name: Wait for initial Ubuntu configuration
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+    - name: Gather the guest platform
+      ansible.builtin.setup:
+        gather_subset: [min]
+    - name: Require the supported Ubuntu lab platform
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.distribution == 'Ubuntu'
+          - ansible_facts.distribution_version == '24.04'
+    - name: Deploy container fixtures
+      ansible.builtin.include_tasks: lab/containers.yml
+    - name: Deploy the optional exact vendor-package fixture
+      ansible.builtin.include_tasks: lab/packages.yml
+      when: phpdetect_lab_package is defined
+    - name: Write private discovery variables on the lab host
+      ansible.builtin.copy:
+        dest: /opt/phpdetect-lab/discovery-vars.yml
+        mode: '0600'
+        content: '{{ lab_discovery_vars | to_nice_yaml }}'
+    - name: Publish reusable inventory and fixture evidence as AAP artifacts
+      ansible.builtin.set_stats:
+        per_host: false
+        aggregate: false
+        data:
+          phpdetect_lab:
+            stack: 'phpdetect-lab-{{ phpdetect_lab_id }}'
+            region: '{{ phpdetect_lab_region }}'
+            instance_id: '{{ hostvars.localhost.lab_stack.stack_outputs.InstanceId }}'
+            status: ready
+            fixtures: '{{ lab_fixture_records }}'
+            discovery_inventory:
+              all:
+                children:
+                  php_targets:
+                    hosts:
+                      '{{ inventory_hostname }}': '{{ {"ansible_host": ansible_host, "ansible_user": "ubuntu"} | combine(lab_discovery_vars) }}'
+    - name: Explain the expected discovery result
+      ansible.builtin.debug:
+        msg: >-
+          Lab ready. Copy phpdetect_lab.discovery_inventory from job artifacts into a separate AAP inventory.
+          Container findings remain unknown even for known-version lab fixtures; a package fixture with
+          complete exact vendor evidence can classify affected or patched. No exploit probes were run.

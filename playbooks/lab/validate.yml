@@ -1,0 +1,36 @@
+---
+- name: Require explicit lab identification and restricted SSH access
+  ansible.builtin.assert:
+    that:
+      - phpdetect_lab_id | default('') is match('^[a-z][a-z0-9-]{0,30}$')
+      - phpdetect_lab_confirm | default('') == phpdetect_lab_id | default('missing')
+      - phpdetect_lab_region | default('') is match('^[a-z]{2}(-[a-z]+)+-[0-9]+$')
+      - phpdetect_lab_key_name | default('') | length > 0
+      - "'REPLACE' not in (phpdetect_lab_key_name | default('REPLACE'))"
+      - phpdetect_lab_ssh_cidr | default('') is match('^([0-9]{1,3}[.]){3}[0-9]{1,3}/(2[4-9]|3[0-2])$')
+      - not ansible_check_mode
+    fail_msg: >-
+      Set lab ID, matching phpdetect_lab_confirm, AWS region, existing key pair and AAP egress IPv4 CIDR
+      (/24 through /32 only). This provisions billed disposable resources; check mode is unsupported.
+- name: Validate optional vendor-package fixture before provisioning
+  ansible.builtin.assert:
+    that:
+      - phpdetect_lab_package.snapshot is match('^[0-9]{8}T[0-9]{6}Z$')
+      - phpdetect_lab_package.evidence.status in ['affected', 'patched']
+      - phpdetect_lab_package.evidence.advisory_url is match('^https://')
+      - phpdetect_lab_package.evidence.checked_at | length > 0
+      - phpdetect_lab_package.evidence.channel | length > 0
+      - phpdetect_lab_package.evidence.os_id == 'ubuntu'
+      - phpdetect_lab_package.evidence.os_version | string == '24.04'
+      - "['CVE-2026-109618', 'CVE-2026-109619'] | difference(phpdetect_lab_package.evidence.cves) | length == 0"
+      - "'php8.3-fpm' in phpdetect_lab_package.evidence.packages"
+      - "'php8.3-common' in phpdetect_lab_package.evidence.packages"
+      - "'REPLACE' not in (phpdetect_lab_package | to_json)"
+    fail_msg: Package fixtures require a reviewed Ubuntu snapshot and exact vendor package evidence; no affected revision is guessed.
+  when: phpdetect_lab_package is defined
+- name: Validate every optional exact package specification
+  ansible.builtin.assert:
+    that:
+      - item.key is match('^php8[.]3(-[a-z0-9-]+)?$')
+      - item.value | string is match('^[A-Za-z0-9+.:~-]+$')
+  loop: '{{ (phpdetect_lab_package | default({})).get("evidence", {}).get("packages", {}) | dict2items }}'
