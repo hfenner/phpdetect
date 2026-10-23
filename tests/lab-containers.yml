@@ -6,7 +6,7 @@
   become: true
   vars:
     phpdetect_lab_id: ci
-    phpdetect_lab_install_engine: true
+    phpdetect_lab_install_engine: "{{ phpdetect_lab_container_engine | default('podman') == 'podman' }}"
   tasks:
     - name: Build and verify the real fixtures
       ansible.builtin.include_tasks: ../playbooks/lab/containers.yml
