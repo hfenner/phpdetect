@@ -41,6 +41,13 @@ const container=manualFinding({host:'linux'},'/display-name','Docker inventory +
 assert.match(container.command,/docker exec 'abc123' php -n -v/);
 assert.doesNotMatch(container.command,/display-name/);
 assert.ok(detectionFindings([host]).every(f=>f.manual.command));
+// Pasting a command into an interactive shell must never end the session. With an empty PATH every
+// external command fails, so each exit path is exercised; the trailing echo proves the shell survived.
+const survives=command=>spawnSync('bash',['-c','PATH=/nonexistent; eval "$1" >/dev/null 2>&1; echo alive','_',command],{encoding:'utf8'}).stdout.includes('alive');
+for (const i of [0,1,2,3,4,5,6,7,8,13,14,15]) assert.ok(survives(manualChecks[i][1]),'manual check '+i+' ended the shell');
+for (const check of ['Explicit runtime mapping','Linux common-path scan','Linux foreign-root scan']) assert.ok(survives(manualFinding({host:'h'},'/usr/sbin/php-fpm',check).command),check+' finding ended the shell');
+assert.ok(survives(manualFinding({host:'h'},'/x','Docker inventory + PHP CLI probe','abc').command));
+assert.match(manualFinding({host:'w',platform:'Windows'},'C:\\PHP\\php.exe','x').command,/^& \{\n/,'Windows collector runs in a script block so preferences do not leak');
 console.log('Manual reproduction coverage, quoting and Bash syntax checks passed.');
 
 const podman=manualFinding({host:'linux'},'/php','Podman inventory + PHP CLI probe','xyz','podman');
