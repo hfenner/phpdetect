@@ -21,11 +21,15 @@ html=html.replace('OpenShift authenticated','Public demo · Fictional data')
 // Render the reference directly into the front page, without a tab or disclosure.
 const {detectionChecks,manualChecks,esc}=require('../app.js');
 assert.equal(detectionChecks.length,manualChecks.length);
+const {groups,guides}=require('./check-guides.cjs');
+assert.equal(guides.length,detectionChecks.length);
+assert.deepEqual(groups.flatMap(g=>g.indices).sort((a,b)=>a-b),detectionChecks.map((_,i)=>i));
+const explain=i=>`<div class="script-guide"><b>How it works</b><ol>${guides[i].steps.map(step=>`<li>${esc(step)}</li>`).join('')}</ol><p><b>Limits:</b> ${esc(guides[i].limits)}</p></div>`;
 const targetFor=i=>i>=13 ? 'Ansible control node or AAP execution environment — project checkout and your inventory' :
  i>=9 ? 'Windows target — sample: demo-windows-01 (192.0.2.21)' :
  i===7 || i===8 ? 'Docker host — sample: demo-containers-01 (192.0.2.31)' :
  'Linux target — samples: demo-linux-01 (192.0.2.11), demo-linux-02 (192.0.2.12)';
-const checkRows=detectionChecks.map(([name,description],i)=>`<tr><td><strong>${esc(name)}</strong><p>${esc(description)}</p></td><td>${esc(targetFor(i))}<p><b>Shell / access:</b> ${esc(manualChecks[i][0])}</p></td><td><pre tabindex="0">${esc(manualChecks[i][1])}</pre><p>${esc(manualChecks[i][2])}</p></td></tr>`).join('');
+const checkRows=groups.map(g=>`<tr class="check-group"><th colspan="3" scope="colgroup"><h3>${esc(g.name)}</h3><p>${esc(g.intro)}</p></th></tr>`+g.indices.map(i=>`<tr><td><strong>${esc(detectionChecks[i][0])}</strong><p>${esc(detectionChecks[i][1])}</p></td><td>${esc(targetFor(i))}<p><b>Shell / access:</b> ${esc(manualChecks[i][0])}</p></td><td>${explain(i)}<b>Command to run</b><pre tabindex="0">${esc(manualChecks[i][1])}</pre><p><b>Expected output:</b> ${esc(manualChecks[i][2])}</p></td></tr>`).join('')).join('');
 const reference=`<section id="manual-check-reference" class="public-reference"><h2>Checks, targets and manual commands</h2><p>All ${detectionChecks.length} checks are listed below. Sample hosts and addresses are fictional: run commands on your own corresponding target, not on GitHub Pages. Replace example artifact paths, CONTAINER_ID and /path/to/inventory.yml before running. Root Bash means a root shell on the target; elevated PowerShell means Run as administrator. For Ansible commands, start in the phpdetect repository with its dependencies and target credentials available.</p><p>These commands collect evidence; they do not patch targets. The optional Docker probe executes PHP CLI inside the selected container. Advisory and coverage checks rerun the full discovery playbook with your inventory. Results can change between runs.</p><div class="table-wrap"><table><thead><tr><th>CHECK / PURPOSE</th><th>TARGET / REQUIRED ACCESS</th><th>MANUAL COMMAND / EXPECTED RESULT</th></tr></thead><tbody>${checkRows}</tbody></table></div></section>`;
 html=html.replace('<main>',`<main><section class="public-repo"><h1>phpdetect on GitHub</h1><p>Source code, Ansible playbooks, execution environment and deployment workflows.</p><a class="repo-url" href="https://github.com/hfenner/phpdetect">github.com/hfenner/phpdetect ↗</a><p><a href="#manual-check-reference">Jump to all ${detectionChecks.length} checks, targets and manual commands ↓</a></p></section>`)
  .replace('<footer>',reference+'<footer>')
@@ -52,7 +56,13 @@ js=js.replace('`AAP discovery${','`Demo snapshot${')
 const start=js.indexOf('function render(){');
 const end=js.indexOf('function renderVersions()',start);
 assert.ok(start>=0 && end>start);
-js=js.slice(0,start)+fs.readFileSync(path.join(__dirname,'host-view.js'),'utf8')+'\n'+js.slice(end);
+js=js.slice(0,start)+'const checkGroups='+JSON.stringify(groups)+';\nconst checkGuides='+JSON.stringify(guides)+';\n'+fs.readFileSync(path.join(__dirname,'host-view.js'),'utf8')+'\n'+js.slice(end);
+// Apply the same grouping and explanations to the Detection methods catalog.
+const catalogStart=js.indexOf("$('detection-checks').innerHTML=");
+const catalogEnd=js.indexOf("\n}",catalogStart);
+assert.ok(catalogStart>=0 && catalogEnd>catalogStart);
+js=js.slice(0,catalogStart)+"$('detection-checks').innerHTML=checkGroups.map(g=>`<tr class=\"check-group\"><th colspan=\"2\"><h3>${esc(g.name)}</h3><p>${esc(g.intro)}</p></th></tr>`+g.indices.map(i=>`<tr><td><b>${esc(detectionChecks[i][0])}</b></td><td>${guideMarkup(i)}${manualMarkup({where:manualChecks[i][0],command:manualChecks[i][1],expect:manualChecks[i][2]})}</td></tr>`).join('')).join('');"+js.slice(catalogEnd);
+html=html.replace('</head>','<style>.check-group th{background:#e0f2e9!important;white-space:normal;letter-spacing:normal;text-transform:none}.check-group h3{font-size:18px;margin:0 0 6px}.check-group p{font-size:13px}.script-guide{font-size:13px;line-height:1.65}.script-guide ol{padding-left:22px;margin:10px 0}.script-guide li{margin:8px 0}.script-guide p{margin:12px 0}</style></head>');
 fs.writeFileSync(path.join(out,'app.js'),js);
 const version=require('node:crypto').createHash('sha256').update(js).digest('hex').slice(0,12);
 html=html.replace('src="app.js"','src="app.js?v='+version+'"');

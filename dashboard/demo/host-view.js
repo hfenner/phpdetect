@@ -1,3 +1,4 @@
+function guideMarkup(i){return `<div class="script-guide"><b>How it works</b><ol>${checkGuides[i].steps.map(step=>`<li>${esc(step)}</li>`).join('')}</ol><p><b>Limits:</b> ${esc(checkGuides[i].limits)}</p></div>`;}
 // Inserted into the dashboard's browser scope by the public demo builder.
 function hostChecks(h) {
   const windows=h.platform==='Windows';
@@ -38,7 +39,11 @@ function render(){
     const rows=model.rows.filter(r=>r.host===h.host && r.kind!=='Host');
     const checks=hostChecks(h);
     const id='host-checks-'+index;
-    const nested=checks.map(c=>`<tr><td><b>${esc(detectionChecks[c.i][0])}</b><p>${esc(detectionChecks[c.i][1])}</p></td><td>${c.records.length?c.records.map(r=>`<p>${esc(r)}</p>`).join(''):'<p>No evidence recorded for this check. This does not establish that it ran or that PHP is absent.</p>'}</td><td>${esc(c.target)}${manualMarkup({where:manualChecks[c.i][0],command:manualChecks[c.i][1],expect:manualChecks[c.i][2]})}</td></tr>`).join('');
+    const nested=checkGroups.map(g=>{
+      const members=checks.filter(c=>g.indices.includes(c.i));
+      if(!members.length)return '';
+      return `<tr class="check-group"><th colspan="3"><h3>${esc(g.name)}</h3><p>${esc(g.intro)}</p></th></tr>`+members.map(c=>`<tr><td><b>${esc(detectionChecks[c.i][0])}</b><p>${esc(detectionChecks[c.i][1])}</p></td><td>${c.records.length?c.records.map(r=>`<p>${esc(r)}</p>`).join(''):'<p>No evidence recorded for this check. This does not establish that it ran or that PHP is absent.</p>'}</td><td>${esc(c.target)}${guideMarkup(c.i)}${manualMarkup({where:manualChecks[c.i][0],command:manualChecks[c.i][1],expect:manualChecks[c.i][2]})}</td></tr>`).join('');
+    }).join('');
     return `<tr class="host-summary"><td><button class="host-expand linkbutton" aria-expanded="false" aria-controls="${id}">＋ ${esc(h.host)}</button><span class="sub mono">${esc(h.address || 'Not recorded')}</span></td><td>${badge(statusOf(h.patch_status))}</td><td>${rows.length}</td><td class="mono">${esc([...new Set(rows.map(r=>r.version))].join(', ') || 'Not recorded')}</td><td>${checks.filter(c=>c.records.length).length} / ${checks.length}<span class="sub">checks with recorded evidence</span></td></tr><tr id="${id}" hidden><td colspan="5" class="host-check-cell"><h3>Detection checks for ${esc(h.host)}</h3><p>Applicable checks are listed individually. Recorded evidence is not a pass result. All bundled sample results are fictional.</p><table class="host-check-table"><thead><tr><th>CHECK</th><th>RECORDED EVIDENCE</th><th>TARGET / MANUAL COMMAND</th></tr></thead><tbody>${nested}</tbody></table></td></tr>`;
   }).join('');
 }
