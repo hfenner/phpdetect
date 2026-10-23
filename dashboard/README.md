@@ -2,7 +2,7 @@
 
 Community proof of concept, not official vendor-provided code. The dashboard displays detector evidence; it does not independently establish vulnerability or clear hosts.
 
-`playbooks/deploy-dashboard.yml` deploys the page, report ConfigMap, service account, OAuth proxy, service-serving certificate, and re-encrypt HTTPS Route in a dedicated `phpdetect` namespace. It uses only built-in Ansible modules and works in the existing execution environment. The namespace must be absent or labeled `app.kubernetes.io/part-of: phpdetect`; unrelated namespaces are rejected.
+`playbooks/deploy-dashboard.yml` deploys the page, report Secret, service account, OAuth proxy, service-serving certificate, and re-encrypt HTTPS Route in a dedicated `phpdetect` namespace. It uses only built-in Ansible modules and works in the existing execution environment. The namespace must be absent or labeled `app.kubernetes.io/part-of: phpdetect`; unrelated namespaces are rejected.
 
 The page supports host/version search, patch-status and exposure filters, version aggregation, per-runtime evidence, filtered CSV export, and browser-local report import. Full package revisions are retained when provided. Container CLI versions never establish clearance. Lab intent is shown separately from assessment. Unreachable host seeds remain unknown.
 
@@ -27,7 +27,7 @@ This is an explicitly published snapshot, not an automatic scan or live AAP API 
 
 ## Access
 
-Users sign in through OpenShift and must have permission to `get` the `phpdetect-dashboard` service in the `phpdetect` namespace. Cluster administrators already have it. No broad reader role or anonymous access is created. The OAuth flow asks only for `user:info` and `user:check-access`. Service-serving certificates protect the router-to-pod connection. The app uses the restricted security context and does not need a privileged SCC.
+Users sign in through OpenShift and must have permission to `get` the `phpdetect-dashboard` service in the `phpdetect` namespace. The report itself is stored in the `phpdetect-dashboard-report` Secret rather than a ConfigMap, so the namespace `view` role cannot read it through the API; only the proxy path and accounts with Secret read access in the namespace can reach it. Cluster administrators already have it. No broad reader role or anonymous access is created. The OAuth flow asks only for `user:info` and `user:check-access`. Service-serving certificates protect the router-to-pod connection. The app uses the restricted security context and does not need a privileged SCC.
 
 The default OAuth proxy image is pinned to a digest tested on OpenShift 4.20. Override `dashboard_proxy_image` with an appropriate supported image for another cluster. The deployment needs the cluster's Red Hat registry pull access.
 

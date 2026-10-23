@@ -4,7 +4,7 @@
     "tasks": [
       {
         "name": "Create a unique controller report directory",
-        "description": "Creates a new temporary directory on the control node or AAP execution environment for this run\u2019s reports. Each run has its own output location.",
+        "description": "Creates a new temporary directory on the control node or AAP execution environment for this run’s reports. Each run has its own output location.",
         "line": 6
       },
       {
@@ -35,42 +35,42 @@
       {
         "name": "Collect package, process, runtime, and container evidence",
         "description": "For targets whose configured shell is not PowerShell, includes the Linux collector below. Passes inventory-defined phpdetect_runtimes as the list of mapped runtimes; collected details are suppressed in normal task logs.",
-        "line": 52
+        "line": 57
       },
       {
         "name": "Collect native Windows PHP evidence",
         "description": "For targets configured with a PowerShell shell, includes the Windows collector instead. Branch selection is based on inventory shell configuration, not an automatic Windows connection probe.",
-        "line": 60
+        "line": 65
       },
       {
         "name": "Discover products and attach NCSC advisory references",
         "description": "Runs eight paired-file product integrations on Linux or Windows, optionally inside running containers; attaches NCSC product-row matches and conservative runtime associations. Product patch status stays unknown.",
-        "line": 66
+        "line": 71
       },
       {
         "name": "Save the host assessment on the controller",
-        "description": "Combines the assessment with inventory host name, connection address and product matches. Writes it back to the control node with owner-only permissions, replacing that host\u2019s placeholder.",
-        "line": 71
+        "description": "Combines the assessment with inventory host name, connection address and product matches. Writes it back to the control node with owner-only permissions, replacing that host’s placeholder.",
+        "line": 76
       },
       {
         "name": "Assemble all host results including unreachable seeds",
         "description": "Reads the saved result for every scoped host, including any unknown placeholders left by failed or unreachable collection. Final assembly must itself run for a consolidated report to be produced.",
-        "line": 84
+        "line": 89
       },
       {
         "name": "Write the consolidated assessment",
         "description": "Writes summary.json with host assessments, NCSC revision/date and counts of affected and unknown hosts. Affected runtime evidence can flag a host; a patched subset does not clear a host.",
-        "line": 90
+        "line": 95
       },
       {
         "name": "Preserve discovery evidence in AAP job artifacts",
         "description": "When enabled, publishes the assembled hosts and NCSC commit using set_stats so AAP retains them after the execution environment exits. Complete means report assembly completed, not that every host was fully inspected.",
-        "line": 104
+        "line": 109
       },
       {
         "name": "Show private output directory",
         "description": "Prints the private report directory and reminds the operator that unknown findings need follow-up. A separate deployment process publishes a chosen report to the dashboard; discovery does not update the public page automatically.",
-        "line": 115
+        "line": 120
       }
     ]
   },
@@ -214,7 +214,7 @@
       },
       {
         "name": "Retain version-only evidence linked to each running container",
-        "description": "Associates successful PHP CLI version lines with their container IDs. A CLI version never changes the container\u2019s unknown patch status.",
+        "description": "Associates successful PHP CLI version lines with their container IDs. A CLI version never changes the container’s unknown patch status.",
         "line": 236
       },
       {
@@ -244,7 +244,7 @@
     "tasks": [
       {
         "name": "Initialize runtime evidence",
-        "description": "Loads the mapped runtime\u2019s supplied vendor evidence and resets package-owner, process and visibility-gap state for that runtime.",
+        "description": "Loads the mapped runtime’s supplied vendor evidence and resets package-owner, process and visibility-gap state for that runtime.",
         "line": 2
       },
       {
@@ -280,27 +280,27 @@
       {
         "name": "Parse process evidence",
         "description": "Converts PID|true/false output into structured process records for the classifier.",
-        "line": 113
+        "line": 114
       },
       {
         "name": "Record process visibility gaps with their cause",
         "description": "Preserves each gap|PID|cause line so a failure to inspect processes is explained rather than treated as a clean result.",
-        "line": 119
+        "line": 120
       },
       {
         "name": "Report a failed inspection that produced no gap lines (for example bash missing)",
         "description": "If the inspection command failed without structured gap lines, records its exit status and error text as a visibility gap.",
-        "line": 124
+        "line": 125
       },
       {
         "name": "Evaluate vendor and running-build evidence",
         "description": "Includes the classification tasks below with exact package matching, ownership, OS facts, process evidence and inspection visibility.",
-        "line": 129
+        "line": 130
       },
       {
         "name": "Append runtime assessment",
         "description": "Adds the runtime result, reason, sites supplied in inventory, process details and vendor evidence. Internal exposure is P2; internet or unknown exposure is P1. Exposure is inventory-supplied, not externally tested.",
-        "line": 140
+        "line": 141
       }
     ]
   },

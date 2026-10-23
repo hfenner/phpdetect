@@ -4,6 +4,8 @@ const path=require('node:path');
 const assert=require('node:assert/strict');
 const dashboard=path.resolve(__dirname,'..');
 const out=path.resolve(dashboard,'../_site');
+// Every presentation change must find its anchor; a silent no-op would publish the authenticated page's wording.
+const must=(s,from,to)=>{assert.ok(s.includes(from),'Missing replacement anchor: '+String(from).slice(0,70));return s.replace(from,to);};
 const sample=JSON.parse(fs.readFileSync(path.join(__dirname,'published-report.json'),'utf8'));
 assert.equal(sample.publication,'user-approved-lab-snapshot');
 assert.ok(sample.discovery.hosts.length>0);
@@ -11,10 +13,10 @@ assert.equal(sample.source.status,'successful');
 fs.mkdirSync(out,{recursive:true});
 assert.equal(fs.readdirSync(out).length,0,'Build destination must be empty');
 let html=fs.readFileSync(path.join(dashboard,'index.html'),'utf8');
-html=html.replace('OpenShift authenticated','Public lab report')
- .replace('OpenShift deployment','GitHub Pages report')
- .replace('<main>','<main><div class="notice" role="note"><b>PUBLIC LAB SNAPSHOT.</b> Real lab discovery evidence published with owner approval. This is a saved snapshot, not a live connection to AAP. Unknown findings are not cleared. <a href="https://github.com/hfenner/phpdetect">View repository</a>.</div>')
- .replace('Exposure overview</title>','Public lab report</title>');
+html=must(html,'OpenShift authenticated','Public lab report');
+html=must(html,'OpenShift deployment','GitHub Pages report');
+html=must(html,'<main>','<main><div class="notice" role="note"><b>PUBLIC LAB SNAPSHOT.</b> Real lab discovery evidence published with owner approval. This is a saved snapshot, not a live connection to AAP. Unknown findings are not cleared. <a href="https://github.com/hfenner/phpdetect">View repository</a>.</div>');
+html=must(html,'Exposure overview</title>','Public lab report</title>');
 
 // Render the reference directly into the front page, without a tab or disclosure.
 const {detectionChecks,manualChecks,esc}=require('../app.js');
@@ -50,14 +52,13 @@ html=html.replace('<section class="public-repo"><h1>phpdetect on GitHub</h1><p>S
 
 const walkthroughRevision=process.env.GITHUB_SHA || 'main';
 assert.match(walkthroughRevision,/^(main|[0-9a-f]{40})$/);
-html=html.replace('<button class="nav" data-view="evidence">','<button class="nav" data-view="walkthrough">☷ <span>Playbook walkthrough</span></button><button class="nav" data-view="evidence">')
- .replace('<footer>',require('./walkthrough.cjs')(walkthroughRevision)+'<footer>')
- .replace('</head>','<style>.walk-intro{padding:12px 24px;font-size:14px}.walk-intro p{margin:12px 0}.walk-phase{border-top:1px solid var(--line);padding:18px 24px}.walk-phase>summary{font-size:17px;font-weight:650;color:var(--teal);cursor:pointer}.walk-steps{padding-left:25px;max-width:1100px}.walk-steps>li{padding:12px 0 20px 8px;border-bottom:1px solid var(--line)}.walk-steps h4{font-size:15px;margin:0 0 8px}.walk-steps p{line-height:1.7}.walk-source{display:inline-block;font-size:12px;margin-top:9px}.walk-branch{padding:15px;background:#f4f8f7;margin-top:15px}.walk-branch>summary{cursor:pointer;font-weight:600}.sidebar nav{overflow:auto}@media(max-width:720px){.sidebar nav{flex-wrap:wrap}.nav{width:auto;flex:1 1 28%}}</style></head>');
+html=must(html,'<button class="nav" data-view="evidence">','<button class="nav" data-view="walkthrough">☷ <span>Playbook walkthrough</span></button><button class="nav" data-view="evidence">');
+html=must(html,'<footer>',require('./walkthrough.cjs')(walkthroughRevision)+'<footer>');
+html=html.replace('</head>','<style>.walk-intro{padding:12px 24px;font-size:14px}.walk-intro p{margin:12px 0}.walk-phase{border-top:1px solid var(--line);padding:18px 24px}.walk-phase>summary{font-size:17px;font-weight:650;color:var(--teal);cursor:pointer}.walk-steps{padding-left:25px;max-width:1100px}.walk-steps>li{padding:12px 0 20px 8px;border-bottom:1px solid var(--line)}.walk-steps h4{font-size:15px;margin:0 0 8px}.walk-steps p{line-height:1.7}.walk-source{display:inline-block;font-size:12px;margin-top:9px}.walk-branch{padding:15px;background:#f4f8f7;margin-top:15px}.walk-branch>summary{cursor:pointer;font-weight:600}.sidebar nav{overflow:auto}@media(max-width:720px){.sidebar nav{flex-wrap:wrap}.nav{width:auto;flex:1 1 28%}}</style></head>');
 
-html=html.replace('<footer>','<div hidden><span id="hosts-count"></span><span id="affected-count"></span><span id="unknown-count"></span><span id="runtime-count"></span></div><footer>');
+html=must(html,'<footer>','<div hidden><span id="hosts-count"></span><span id="affected-count"></span><span id="unknown-count"></span><span id="runtime-count"></span></div><footer>');
 let js=fs.readFileSync(path.join(dashboard,'app.js'),'utf8');
-js=js.replace('`AAP discovery${','`AAP discovery${')
- .replace("source.status && source.status!=='successful'", "source.status && source.status!=='fictional sample' && source.status!=='successful'");
+js=must(js,"source.status && source.status!=='successful'", "source.status && source.status!=='fictional sample' && source.status!=='successful'");
 const start=js.indexOf('function render(){');
 const end=js.indexOf('function renderVersions()',start);
 assert.ok(start>=0 && end>start);
@@ -70,7 +71,7 @@ js=js.slice(0,catalogStart)+"$('detection-checks').innerHTML=checkGroups.map(g=>
 html=html.replace('</head>','<style>.check-group th{background:#e0f2e9!important;white-space:normal;letter-spacing:normal;text-transform:none}.check-group h3{font-size:18px;margin:0 0 6px}.check-group p{font-size:13px}.script-guide{font-size:13px;line-height:1.65}.script-guide ol{padding-left:22px;margin:10px 0}.script-guide li{margin:8px 0}.script-guide p{margin:12px 0}</style></head>');
 fs.writeFileSync(path.join(out,'app.js'),js);
 const version=require('node:crypto').createHash('sha256').update(js).digest('hex').slice(0,12);
-html=html.replace('src="app.js"','src="app.js?v='+version+'"');
+html=must(html,'src="app.js"','src="app.js?v='+version+'"');
 fs.writeFileSync(path.join(out,'index.html'),html);
 fs.copyFileSync(path.join(dashboard,'styles.css'),path.join(out,'styles.css'));
 fs.writeFileSync(path.join(out,'data.json'),JSON.stringify(sample,null,2)+'\n');

@@ -22,8 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
       - name: Install Ansible Builder
@@ -39,6 +39,7 @@ jobs:
             ansible-runner --version
             ansible-playbook tests/classification.yml
             ansible-playbook tests/package-parsing.yml
+            ansible-playbook tests/live-inspection.yml
             ansible-playbook playbooks/discover.yml --syntax-check
             ansible-playbook playbooks/update.yml --syntax-check
             ansible-playbook playbooks/refresh-ncsc.yml --syntax-check
@@ -50,7 +51,7 @@ jobs:
             ansible-playbook playbooks/build-native-lab-aws.yml --syntax-check
             ansible-playbook playbooks/destroy-native-lab-aws.yml --syntax-check
             ansible-playbook aap/register-native-targets.yml --syntax-check
-            ansible-playbook tests/windows-tasks.yml --syntax-check
+            ansible-playbook tests/windows-tasks.yml
             ansible-playbook tests/native-lab.yml
             ansible-playbook tests/lab.yml
             ansible-runner run /runner --project-dir /runner/project --inventory /runner/project/tests/local.yml --artifact-dir /tmp/phpdetect-runner --ident smoke -p playbooks/discover.yml --cmdline "-e phpdetect_publish_job_artifacts=true"
@@ -69,7 +70,7 @@ jobs:
           printf '### Published execution environment\n\n```\n' >> "$GITHUB_STEP_SUMMARY"
           cat image-digest.txt >> "$GITHUB_STEP_SUMMARY"
           printf '```\n' >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: phpdetect-ee-build
           path: |

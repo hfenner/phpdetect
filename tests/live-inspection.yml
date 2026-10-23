@@ -1,0 +1,70 @@
+---
+- name: Exercise the live-file inspection script against a fixture process tree
+  hosts: localhost
+  gather_facts: false
+  vars:
+    live_script: >-
+      {{ (lookup('ansible.builtin.file', playbook_dir ~ '/../playbooks/tasks/assess-runtime.yml')
+      | from_yaml | selectattr('name', 'equalto', 'Inspect all live instances and their file mappings without changing them')
+      | first)['ansible.builtin.shell'] }}
+  tasks:
+    - name: Create a fixture root outside the temporary-file paths the scan ignores
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: phpdetect-live-
+        path: '{{ lookup("ansible.builtin.env", "HOME") }}'
+      register: live_fixture
+    - name: Build fixture processes with real device and inode numbers
+      ansible.builtin.shell:
+        cmd: |
+          set -eo pipefail
+          root="$FIXTURE"
+          printf 'binary' > "$root/artifact"
+          dev=$(stat -c %d "$root/artifact"); inode=$(stat -c %i "$root/artifact")
+          major=$(( ((dev >> 8) & 4095) | ((dev >> 32) & ~4095) )); minor=$(( (dev & 255) | ((dev >> 12) & ~255) ))
+          mapline() { printf '00400000-00401000 r-xp 00000000 %02x:%02x %s %s\n' "$major" "$minor" "$1" "$root/artifact"; }
+          mkdir -p "$root/proc" "$root/elsewhere"
+          make_proc() {
+            mkdir -p "$root/proc/$1"
+            if [ "$2" = unreadable ]; then : > "$root/proc/$1/exe"; else ln -s "$root/artifact" "$root/proc/$1/exe"; fi
+            ln -s "$3" "$root/proc/$1/root"
+            printf 'php-fpm\n' > "$root/proc/$1/comm"
+            printf '%s' "$4" > "$root/proc/$1/cmdline"
+            { mapline "$5"; printf '%s' "$6"; } > "$root/proc/$1/maps"
+          }
+          # 100: current binary plus anonymous shared-memory pseudo files that must be ignored.
+          make_proc 100 link / php-fpm "$inode" $'7f00-7f01 rw-s 00000000 00:01 7 /memfd:opcache (deleted)\n7f02-7f03 rw-s 00000000 00:05 5 /dev/zero (deleted)\n7f04-7f05 rw-s 00000000 00:01 9 /SYSV00000000 (deleted)\n'
+          # 101: current binary but a deleted library still mapped.
+          make_proc 101 link / php-fpm "$inode" $'7f00-7f01 r-xp 00000000 00:01 1 /lib/libstale.so (deleted)\n'
+          # 102: same binary path under a different root (container or chroot).
+          make_proc 102 link "$root/elsewhere" php-fpm "$inode" ''
+          # 103: executable link unreadable with a command line: a named visibility gap.
+          make_proc 103 unreadable / php-fpm "$inode" ''
+          # 104: executable link unreadable without a command line: a kernel thread, skipped.
+          make_proc 104 unreadable / '' "$inode" ''
+          # 105: the mapped binary inode no longer matches the file on disk: replaced.
+          make_proc 105 link / php-fpm "$((inode + 1))" ''
+        executable: /bin/bash
+      environment:
+        FIXTURE: '{{ live_fixture.path }}'
+      changed_when: true
+    - name: Run the exact playbook script against the fixture tree
+      ansible.builtin.shell:
+        cmd: '{{ live_script }}'
+        executable: /bin/bash
+      environment:
+        PHPDETECT_PROC: '{{ live_fixture.path }}/proc'
+        PHPDETECT_ARTIFACT: '{{ live_fixture.path }}/artifact'
+      register: live_result
+      changed_when: false
+      failed_when: false
+    - name: Require pseudo mappings ignored, stale and replaced files blocked, foreign roots skipped, and gaps named
+      ansible.builtin.assert:
+        that:
+          - live_result.rc == 3
+          - live_result.stdout_lines == ['100|true', '101|false', 'gap|103|cannot read executable link (php-fpm)', '105|false']
+        fail_msg: 'Unexpected scan result: rc={{ live_result.rc }} stdout={{ live_result.stdout_lines }} stderr={{ live_result.stderr }}'
+    - name: Remove the fixture tree
+      ansible.builtin.file:
+        path: '{{ live_fixture.path }}'
+        state: absent

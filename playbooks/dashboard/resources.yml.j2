@@ -21,12 +21,13 @@ metadata:
 data: {{ dashboard_assets | to_json }}
 ---
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
   name: {{ dashboard_name }}-report
   namespace: {{ dashboard_namespace }}
+type: Opaque
 data:
-  data.json: {{ dashboard_report_json | to_json }}
+  data.json: {{ dashboard_report_json | b64encode | to_json }}
 ---
 apiVersion: v1
 kind: Service
@@ -102,7 +103,7 @@ spec:
           projected:
             sources:
               - configMap: {name: {{ dashboard_name }}-assets}
-              - configMap: {name: {{ dashboard_name }}-report}
+              - secret: {name: {{ dashboard_name }}-report}
         - name: tls
           secret: {secretName: {{ dashboard_name }}-tls}
         - name: cookie

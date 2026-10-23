@@ -23,9 +23,9 @@
           - aap_lab_aws_credential_id | default(0) | int > 0
           - aap_lab_machine_credential_id | default(0) | int > 0
           - phpdetect_ee_image | default('') is match('^.+@sha256:[a-f0-9]{64}$')
-          - phpdetect_project_revision | default('') | length > 0
+          - phpdetect_project_revision | default('') is match('^[0-9a-f]{40}$')
           - not ansible_check_mode
-        fail_msg: Supply AAP gateway URL, AAP_TOKEN, organization and existing AWS/Machine credential IDs, pinned EE image and project revision. Check mode is unsupported.
+        fail_msg: Supply AAP gateway URL, AAP_TOKEN, organization and existing AWS/Machine credential IDs, pinned EE image and a 40-character project commit SHA (branch names are rejected because the project updates on every launch). Check mode is unsupported.
       no_log: true
     - name: Validate administrator-managed build settings
       ansible.builtin.assert:

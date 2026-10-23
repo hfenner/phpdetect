@@ -62,3 +62,25 @@ assert.match(productFinding.detail,/PHP patch status: unknown/);
 assert.match(productFinding.manual.command,/ansible-playbook/);
 assert.match(productFinding.detail,/not a separate PHP runtime/);
 assert.equal(normalize({hosts:[productHost]}).rows.length,1,'Product identity must not inflate PHP runtime counts');
+
+// The scripts the dashboard tells operators to run must be byte-identical to the scripts the playbooks run.
+const fs=require('node:fs');
+const path=require('node:path');
+const {liveInspection,windowsCollector}=require('../dashboard/app.js');
+const taskBlock=(file,taskName,key)=>{
+  const lines=fs.readFileSync(path.join(__dirname,'..',file),'utf8').split('\n');
+  const task=lines.findIndex(l=>l.trim().startsWith('- name: '+taskName));
+  assert.ok(task>=0,taskName+' not found in '+file);
+  const start=lines.findIndex((l,i)=>i>task && l.trim()===key+': |');
+  assert.ok(start>=0,key+' block scalar missing for '+taskName);
+  const indent=lines[start].search(/\S/)+2;
+  const body=[];
+  for(const l of lines.slice(start+1)){ if(l.trim()==='' || l.startsWith(' '.repeat(indent))) body.push(l.slice(indent)); else break; }
+  while(body.length && body[body.length-1]==='') body.pop();
+  return body.join('\n')+'\n';
+};
+assert.equal(liveInspection,taskBlock('playbooks/tasks/assess-runtime.yml','Inspect all live instances','ansible.builtin.shell'),'liveInspection drifted from assess-runtime.yml');
+assert.equal(windowsCollector,taskBlock('playbooks/tasks/collect-windows.yml','Collect native Windows PHP','ansible.builtin.raw'),'windowsCollector drifted from collect-windows.yml');
+assert.equal(manualChecks[1][1],'(\n'+taskBlock('playbooks/tasks/collect.yml','Find common PHP installations','ansible.builtin.shell')+')','common-path manual command drifted from collect.yml');
+assert.equal(manualChecks[3][1],'(\n'+taskBlock('playbooks/tasks/collect.yml','Identify PHP executables under a different process root','ansible.builtin.shell')+')','foreign-root manual command drifted from collect.yml');
+console.log('Embedded scripts match the playbook task files.');

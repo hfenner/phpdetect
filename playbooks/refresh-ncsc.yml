@@ -60,6 +60,12 @@
             that: >-
               snapshot_documents.results | map(attribute='stdout') | map('trim')
               | reject('equalto', '') | list | length == snapshot_paths | length
+        - name: Reject an unexpectedly large upstream snapshot before replacing the bundled file
+          ansible.builtin.assert:
+            that:
+              - snapshot_paths | length <= 100
+              - snapshot_documents.results | map(attribute='stdout') | map('length') | sum <= 4194304
+            fail_msg: Upstream product lists exceed the bundled snapshot limits (100 documents, 4 MiB in total); review the upstream change before refreshing.
         - name: Assemble the document snapshot
           ansible.builtin.set_fact:
             snapshot_pages: '{{ snapshot_pages + [{"path": item.item, "content": item.stdout, "status": 200}] }}'

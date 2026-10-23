@@ -48,6 +48,11 @@
   hosts: php_targets
   gather_facts: false
   become: '{{ phpdetect_become | default(false) }}'
+  vars:
+    # SSH with a PowerShell shell, WinRM and PSRP are all Windows targets.
+    phpdetect_windows_target: >-
+      {{ ansible_shell_type | default('sh') == 'powershell'
+      or ansible_connection | default('ssh') in ['winrm', 'psrp'] }}
   tasks:
     - name: Collect package, process, runtime, and container evidence
       ansible.builtin.include_tasks:
@@ -56,13 +61,13 @@
           no_log: true
       vars:
         assessment_runtimes: '{{ phpdetect_runtimes | default([]) }}'
-      when: ansible_shell_type | default('sh') != 'powershell'
+      when: not phpdetect_windows_target | bool
     - name: Collect native Windows PHP evidence
       ansible.builtin.include_tasks:
         file: tasks/collect-windows.yml
         apply:
           no_log: true
-      when: ansible_shell_type | default('sh') == 'powershell'
+      when: phpdetect_windows_target | bool
     - name: Discover products and attach NCSC advisory references
       ansible.builtin.include_tasks:
         file: tasks/products.yml

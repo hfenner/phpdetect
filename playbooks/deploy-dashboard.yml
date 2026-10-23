@@ -14,6 +14,7 @@
       Namespace: /api/v1/namespaces
       ServiceAccount: '/api/v1/namespaces/{{ dashboard_namespace }}/serviceaccounts'
       ConfigMap: '/api/v1/namespaces/{{ dashboard_namespace }}/configmaps'
+      Secret: '/api/v1/namespaces/{{ dashboard_namespace }}/secrets'
       Service: '/api/v1/namespaces/{{ dashboard_namespace }}/services'
       Deployment: '/apis/apps/v1/namespaces/{{ dashboard_namespace }}/deployments'
       Route: '/apis/route.openshift.io/v1/namespaces/{{ dashboard_namespace }}/routes'
@@ -79,7 +80,7 @@
           dashboard_existing_namespace.json.metadata.labels.get('app.kubernetes.io/part-of', '') == 'phpdetect'
     - name: Apply namespace and authenticated application resources
       ansible.builtin.uri:
-        url: '{{ dashboard_api }}{{ dashboard_resource_paths[item.kind] }}/{{ item.metadata.name }}?fieldManager=phpdetect-dashboard'
+        url: '{{ dashboard_api }}{{ dashboard_resource_paths[item.kind] }}/{{ item.metadata.name }}?fieldManager=phpdetect-dashboard&force=true'
         method: PATCH
         headers:
           Authorization: 'Bearer {{ dashboard_token }}'
@@ -90,6 +91,14 @@
       loop: '{{ lookup("template", "dashboard/resources.yml.j2") | from_yaml_all | list }}'
       loop_control:
         label: '{{ item.kind }} {{ item.metadata.name }}'
+      no_log: true
+    - name: Remove the report ConfigMap left by deployments before the report moved to a Secret
+      ansible.builtin.uri:
+        url: '{{ dashboard_api }}/api/v1/namespaces/{{ dashboard_namespace }}/configmaps/{{ dashboard_name }}-report'
+        method: DELETE
+        headers: {Authorization: 'Bearer {{ dashboard_token }}'}
+        ca_path: '{{ dashboard_ca if dashboard_ca | length else omit }}'
+        status_code: [200, 404]
       no_log: true
     - name: Check for the persistent OAuth cookie secret
       ansible.builtin.uri:

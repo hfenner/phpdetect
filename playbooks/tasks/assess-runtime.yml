@@ -50,13 +50,14 @@
   # "gap|PID|cause" for every process that could not be inspected. The scan always
   # covers every process; a process that exits mid-scan is skipped, not a gap.
   # Exit 3 whenever a gap was recorded: visibility is incomplete and never clears the runtime.
+  # PHPDETECT_PROC points the scan at a fixture tree instead of /proc (tests/live-inspection.yml).
   ansible.builtin.shell: |
     set -o pipefail
-    [ "$(id -u)" = 0 ] || { echo 'gap|-|not running as root'; exit 3; }
+    [ "$(id -u)" = 0 ] || [ -n "${PHPDETECT_PROC:-}" ] || { echo 'gap|-|not running as root'; exit 3; }
     [ -f "$PHPDETECT_ARTIFACT" ] || { echo 'gap|-|artifact is not a regular file'; exit 3; }
     host_root=$(stat -Lc '%d:%i' /) || { echo 'gap|-|cannot stat host root'; exit 3; }
     gaps=0
-    for proc in /proc/[0-9]*; do
+    for proc in "${PHPDETECT_PROC:-/proc}"/[0-9]*; do
       pid=${proc##*/}
       exe=$(readlink "$proc/exe" 2>/dev/null) || {
         [ -d "$proc" ] || continue

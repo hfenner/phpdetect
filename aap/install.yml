@@ -23,8 +23,9 @@
           - aap_inventory_id | int > 0
           - aap_machine_credential_id | int > 0
           - phpdetect_ee_image is match('^.+@sha256:[a-f0-9]{64}$')
+          - phpdetect_project_revision | default('') is match('^[0-9a-f]{40}$')
           - not ansible_check_mode
-        fail_msg: Supply site variables, a gateway-issued AAP_TOKEN, and a published immutable image digest. This installer does not support check mode.
+        fail_msg: Supply site variables, a gateway-issued AAP_TOKEN, a published immutable image digest, and a 40-character project commit SHA (branch names are rejected because the project updates on every launch). This installer does not support check mode.
       no_log: true
     - name: Verify the target inventory contains php_targets
       ansible.builtin.uri:
@@ -56,7 +57,7 @@
           organization: '{{ aap_organization_id | int }}'
           scm_type: git
           scm_url: https://github.com/hfenner/phpdetect.git
-          scm_branch: '{{ phpdetect_project_revision | default("main") }}'
+          scm_branch: '{{ phpdetect_project_revision }}'
           scm_update_on_launch: true
           scm_clean: true
           scm_delete_on_update: false

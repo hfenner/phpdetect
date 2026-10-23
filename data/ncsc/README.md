@@ -13,5 +13,6 @@ not proof of remediation; its commit date is not a guarantee of current coverage
 To refresh locally, run `ansible-playbook playbooks/refresh-ncsc.yml` from the
 repository root (requires Git, Ansible, and HTTPS access to GitHub).
 The playbook validates all documents and the license before atomically replacing
-the snapshot. Failed refreshes leave the previous file intact; unchanged data is
+the snapshot, and refuses more than 100 documents or 4 MiB in total so an upstream
+mistake cannot be committed here automatically. Failed refreshes leave the previous file intact; unchanged data is
 not rewritten. The hourly workflow runs this same playbook, with no custom scripts.

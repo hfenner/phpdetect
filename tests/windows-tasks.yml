@@ -2,8 +2,24 @@
 - name: Parse inline Windows tasks without connecting to a host
   hosts: localhost
   gather_facts: false
+  vars:
+    windows_task_files:
+      - ../playbooks/lab/native-windows.yml
+      - ../playbooks/tasks/collect-windows.yml
   tasks:
-    - name: Load native Windows fixture tasks
-      ansible.builtin.import_tasks: ../playbooks/lab/native-windows.yml
-    - name: Load Windows discovery tasks
-      ansible.builtin.import_tasks: ../playbooks/tasks/collect-windows.yml
+    - name: Load each Windows task file as YAML rather than importing it as runnable tasks
+      ansible.builtin.set_fact:
+        windows_tasks: '{{ windows_tasks | default([]) + (lookup("ansible.builtin.file", playbook_dir ~ "/" ~ item) | from_yaml) }}'
+      loop: '{{ windows_task_files }}'
+    - name: Require one inline PowerShell block per file, delivered through raw and never through shell
+      ansible.builtin.assert:
+        that:
+          - windows_tasks | select('contains', 'ansible.builtin.raw') | list | length == windows_task_files | length
+          - windows_tasks | select('contains', 'ansible.builtin.shell') | list | length == 0
+        fail_msg: Windows task files must carry their PowerShell in ansible.builtin.raw blocks only.
+    - name: Require every raw block to carry a non-empty script
+      ansible.builtin.assert:
+        that: item['ansible.builtin.raw'] | trim | length > 0
+      loop: '{{ windows_tasks | select("contains", "ansible.builtin.raw") | list }}'
+      loop_control:
+        label: '{{ item.name | default("unnamed task") }}'
