@@ -42,3 +42,9 @@ assert.match(container.command,/docker exec 'abc123' php -n -v/);
 assert.doesNotMatch(container.command,/display-name/);
 assert.ok(detectionFindings([host]).every(f=>f.manual.command));
 console.log('Manual reproduction coverage, quoting and Bash syntax checks passed.');
+
+const podman=manualFinding({host:'linux'},'/php','Podman inventory + PHP CLI probe','xyz','podman');
+assert.match(podman.command,/podman exec 'xyz' php -n -v/);
+const legacyDocker=manualFinding({host:'linux'},'/php','Docker alternative inventory + PHP CLI probe','xyz','docker');
+assert.match(legacyDocker.command,/docker exec 'xyz' php -n -v/);
+assert.match(manualChecks[7][1],/engine=podman/);

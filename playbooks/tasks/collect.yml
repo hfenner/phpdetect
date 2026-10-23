@@ -159,19 +159,42 @@
         loop_var: runtime
         label: '{{ runtime.id }}'
 
-    - name: Enumerate Docker containers
+    - name: Validate the requested container engine
+      ansible.builtin.assert:
+        that: phpdetect_container_engine | default('auto') in ['auto', 'podman', 'docker']
+    - name: Select Podman first or the explicitly requested alternative
+      ansible.builtin.shell: |
+        if [ "$PHPDETECT_ENGINE" != auto ]; then
+          command -v "$PHPDETECT_ENGINE" >/dev/null && printf '%s' "$PHPDETECT_ENGINE"
+        elif command -v podman >/dev/null; then
+          printf podman
+        elif command -v docker >/dev/null; then
+          printf docker
+        else
+          exit 1
+        fi
+      environment:
+        PHPDETECT_ENGINE: "{{ phpdetect_container_engine | default('auto') }}"
+      register: engine_probe
+      changed_when: false
+      failed_when: false
+      check_mode: false
+    - name: Record the selected container engine
+      ansible.builtin.set_fact:
+        detected_container_engine: "{{ engine_probe.stdout if engine_probe.rc == 0 else 'unavailable' }}"
+    - name: Enumerate containers using the selected engine
       ansible.builtin.command:
-        argv: [docker, ps, '-aq', '--no-trunc']
-      register: docker_ids
+        argv: ['{{ detected_container_engine }}', ps, '-aq', '--no-trunc']
+      register: container_ids
       changed_when: false
       failed_when: false
       check_mode: false
 
     - name: Inspect container identity without logging full configuration
       ansible.builtin.command:
-        argv: [docker, inspect, '{{ item }}']
-      loop: '{{ docker_ids.stdout_lines | default([]) }}'
-      register: docker_details
+        argv: ['{{ detected_container_engine }}', inspect, '{{ item }}']
+      loop: '{{ container_ids.stdout_lines | default([]) }}'
+      register: container_details
       changed_when: false
       failed_when: false
       check_mode: false
@@ -184,14 +207,14 @@
           "name": (item.stdout | from_json)[0].Name,
           "image_id": (item.stdout | from_json)[0].Image,
           "image_reference": (item.stdout | from_json)[0].Config.Image,
-          "running": (item.stdout | from_json)[0].State.Running, "patch_status": "unknown"}] }}
-      loop: '{{ docker_details.results | default([]) }}'
+          "engine": detected_container_engine, "running": (item.stdout | from_json)[0].State.Running, "patch_status": "unknown"}] }}
+      loop: '{{ container_details.results | default([]) }}'
       when: item.rc | default(1) == 0
       no_log: true
 
     - name: Read container CLI PHP version as supporting evidence only
       ansible.builtin.command:
-        argv: [docker, exec, '{{ item.id }}', php, '-n', '-v']
+        argv: ['{{ detected_container_engine }}', exec, '{{ item.id }}', php, '-n', '-v']
       loop: '{{ collected_containers }}'
       when: item.running and phpdetect_container_cli_probe | default(false) | bool
       register: container_versions
@@ -203,16 +226,17 @@
       ansible.builtin.set_fact:
         collection_gaps: >-
           {{ ([] if detected_manager != 'unknown' else ['Package database unavailable'])
-          + ([] if docker_ids.rc == 0 else ['Docker unavailable or inaccessible; container coverage unknown'])
+          + ['Container scope is the selected engine and current user only; other engines and rootless users are not assessed']
+          + ([] if container_ids.rc == 0 else ['Selected container engine unavailable or inaccessible; container coverage unknown'])
           + (['One or more containers could not be inspected']
-          if docker_details.results | default([]) | rejectattr('rc', 'equalto', 0) | list | length > 0 else [])
+          if container_details.results | default([]) | rejectattr('rc', 'equalto', 0) | list | length > 0 else [])
           + (collected_runtimes | map(attribute='visibility_gaps') | flatten | unique
           | map('regex_replace', '^', 'Process visibility: ') | list) }}
 
     - name: Retain version-only evidence linked to each running container
       ansible.builtin.set_fact:
         container_cli_evidence: >-
-          {{ container_cli_evidence + [{"container_id": item.item.id,
+          {{ container_cli_evidence + [{"container_id": item.item.id, "engine": detected_container_engine,
           "php_cli_version": item.stdout | regex_search('(?m)^PHP [^\r\n]+'),
           "patch_status": "unknown"}] }}
       loop: '{{ container_versions.results | default([]) }}'
@@ -230,6 +254,7 @@
       foreign_runtime_candidates: '{{ foreign_candidates }}'
       routing_hints: '{{ routing_hints }}'
       process_candidates: '{{ process_names.stdout_lines | default([]) | select("search", "(?i)(php|apache|httpd|franken)") | list }}'
+      container_engine: '{{ detected_container_engine | default("unavailable") }}'
       containers: '{{ collected_containers }}'
       container_cli_evidence: '{{ container_cli_evidence }}'
       patch_status: '{{ "affected" if collected_runtimes | selectattr("patch_status", "equalto", "affected") | list | length > 0 else "unknown" }}'

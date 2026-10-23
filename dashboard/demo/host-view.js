@@ -12,7 +12,7 @@ function hostChecks(h) {
     if(i===4) records=array(h.runtimes).map(r=>(r.artifact || r.id)+' → '+(r.package_owner || 'Owner not recorded'));
     if(i===5) records=array(h.runtimes).flatMap(r=>array(r.processes).map(p=>(r.artifact || r.id)+' · PID '+p.pid+' · current: '+text(p.current)));
     if(i===6 || i===12) records=array(h.routing_hints).map(text);
-    if(i===7) records=array(h.containers).map(c=>(c.name || c.id)+' · '+c.image_reference);
+    if(i===7) records=array(h.containers).map(c=>(c.name || c.id)+' · engine: '+(c.engine || h.container_engine || 'not recorded')+' · '+c.image_reference);
     if(i===8) records=array(h.container_cli_evidence).map(c=>c.container_id+' · '+c.php_cli_version);
     if(i===9) records=array(h.runtimes).flatMap(r=>array(r.processes).map(p=>(r.artifact || r.id)+' · PID '+p.pid));
     if(i===10) records=array(h.runtimes).map(r=>(r.artifact || r.id)+' · Original directory/process discovery source not recorded');

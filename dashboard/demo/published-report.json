@@ -14,17 +14,20 @@
           {
             "container_id": "b5ed35e10437a4b96b4217e073e50f04920cc071fe69ec12006f3b340962e201",
             "patch_status": "unknown",
-            "php_cli_version": "PHP 8.4.26 (cli) (built: Oct 21 2026 00:31:19) (NTS)"
+            "php_cli_version": "PHP 8.4.26 (cli) (built: Oct 21 2026 00:31:19) (NTS)",
+            "engine": "docker"
           },
           {
             "container_id": "a2f7f1c1dc78f14e5e13a2d08dcea6912fe7dfb62ea7e99dfec77f3ae4198bbf",
             "patch_status": "unknown",
-            "php_cli_version": "PHP 8.4.26 (cli) (built: Oct 21 2026 00:31:19) (NTS)"
+            "php_cli_version": "PHP 8.4.26 (cli) (built: Oct 21 2026 00:31:19) (NTS)",
+            "engine": "docker"
           },
           {
             "container_id": "cca7c2b1752a23231f3ae9e2e14d158d782c57dc3d249947267e1bf98bf5da8b",
             "patch_status": "unknown",
-            "php_cli_version": "PHP 8.4.27 (cli) (built: Oct 21 2026 15:53:29) (NTS)"
+            "php_cli_version": "PHP 8.4.27 (cli) (built: Oct 21 2026 15:53:29) (NTS)",
+            "engine": "docker"
           }
         ],
         "containers": [
@@ -34,7 +37,8 @@
             "image_reference": "docker.io/library/php@sha256:60111400ff77bdc44fa79b4f072afe49a42abba71e0846ad496be4761dc9c11a",
             "name": "/phpdetect-lab-vulnerable-1",
             "patch_status": "unknown",
-            "running": true
+            "running": true,
+            "engine": "docker"
           },
           {
             "id": "a2f7f1c1dc78f14e5e13a2d08dcea6912fe7dfb62ea7e99dfec77f3ae4198bbf",
@@ -42,7 +46,8 @@
             "image_reference": "docker.io/library/php@sha256:60111400ff77bdc44fa79b4f072afe49a42abba71e0846ad496be4761dc9c11a",
             "name": "/phpdetect-lab-unmapped-1",
             "patch_status": "unknown",
-            "running": true
+            "running": true,
+            "engine": "docker"
           },
           {
             "id": "cca7c2b1752a23231f3ae9e2e14d158d782c57dc3d249947267e1bf98bf5da8b",
@@ -50,7 +55,8 @@
             "image_reference": "docker.io/library/php@sha256:a0b75cee7023ba2c127138dcad2ecc6ec7e09435534645e70450f29f24ea2a5a",
             "name": "/phpdetect-lab-patched-1",
             "patch_status": "unknown",
-            "running": true
+            "running": true,
+            "engine": "docker"
           }
         ],
         "foreign_runtime_candidates": [],
@@ -105,7 +111,8 @@
           "    proxy_pass http://172.30.77.13:80;"
         ],
         "runtimes": [],
-        "scope_note": "Configured runtime results do not prove complete host, container, or website coverage."
+        "scope_note": "Configured runtime results do not prove complete host, container, or website coverage.",
+        "container_engine": "docker"
       },
       {
         "address": "18.215.143.44",

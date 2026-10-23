@@ -6,18 +6,18 @@
   become: true
   vars:
     phpdetect_lab_id: ci
-    phpdetect_lab_install_docker: false
+    phpdetect_lab_install_engine: true
   tasks:
     - name: Build and verify the real fixtures
       ansible.builtin.include_tasks: ../playbooks/lab/containers.yml
     - name: Inspect only containers belonging to this lab
       ansible.builtin.command:
-        argv: [docker, compose, '-f', /opt/phpdetect-lab/compose.yml, ps, '-q']
+        argv: "{{ lab_compose + ['-f', '/opt/phpdetect-lab/compose.yml', 'ps', '-q'] }}"
       register: lab_ids
       changed_when: false
     - name: Read fixture isolation settings
       ansible.builtin.command:
-        argv: [docker, inspect, '{{ item }}']
+        argv: ['{{ lab_engine }}', inspect, '{{ item }}']
       loop: '{{ lab_ids.stdout_lines }}'
       register: fixture_inspections
       changed_when: false
@@ -42,14 +42,14 @@
           - host_listeners.stdout is search('127[.]0[.]0[.]1:' ~ (item.port | string))
           - not (host_listeners.stdout is search('(?:0[.]0[.]0[.]0|\*|\[::\]):' ~ (item.port | string)))
       loop: '{{ lab_fixtures }}'
-    - name: Inspect the isolated Docker network
+    - name: Inspect the isolated container network
       ansible.builtin.command:
-        argv: [docker, network, inspect, phpdetect-lab_isolated]
+        argv: ['{{ lab_engine }}', network, inspect, phpdetect-lab_isolated]
       register: isolated_network
       changed_when: false
     - name: Require no container network egress
       ansible.builtin.assert:
-        that: (isolated_network.stdout | from_json)[0].Internal
+        that: (isolated_network.stdout | from_json)[0].get('internal', (isolated_network.stdout | from_json)[0].get('Internal', false))
     - name: Run the actual PHP discovery collector
       ansible.builtin.include_tasks:
         file: ../playbooks/tasks/collect.yml
@@ -58,6 +58,7 @@
       vars:
         assessment_runtimes: []
         phpdetect_container_cli_probe: true
+        phpdetect_container_engine: "{{ lab_engine }}"
     - name: Require discovery to find all three containers without clearing them
       ansible.builtin.assert:
         that:

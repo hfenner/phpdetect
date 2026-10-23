@@ -173,39 +173,54 @@
         "line": 155
       },
       {
-        "name": "Enumerate Docker containers",
-        "description": "Lists all Docker container IDs, including stopped containers. Missing Docker access leaves container coverage unknown.",
+        "name": "Validate the requested container engine",
+        "description": "Accepts auto, podman or docker. An unsupported value fails before any engine command is invoked.",
         "line": 162
+      },
+      {
+        "name": "Select Podman first or the explicitly requested alternative",
+        "description": "In auto mode, selects the installed Podman executable first, then Docker if Podman is absent. Explicit selection requires that engine. A permission or daemon failure does not silently switch stores.",
+        "line": 165
+      },
+      {
+        "name": "Record the selected container engine",
+        "description": "Stores the selected engine, or unavailable. All later container commands use this choice in the current connection/become user context.",
+        "line": 182
+      },
+      {
+        "name": "Enumerate containers using the selected engine",
+        "description": "Lists all container IDs in the selected engine and user store, including stopped containers. Podman is preferred; Docker is the alternative. Other engines and rootless users are outside this scan.",
+        "line": 185
       },
       {
         "name": "Inspect container identity without logging full configuration",
         "description": "Inspects each container with full task output hidden so sensitive configuration is not printed in the job log.",
-        "line": 170
+        "line": 193
       },
       {
         "name": "Keep only container identity and running state",
-        "description": "Retains only container ID/name, image ID/reference and running state. Every container starts and remains unknown in this collector.",
-        "line": 180
+        "description": "Retains container ID/name, selected engine, image ID/reference and running state. Container patch status stays unknown.",
+        "line": 203
       },
       {
         "name": "Read container CLI PHP version as supporting evidence only",
         "description": "Only when the optional probe is enabled and a container is running, executes php -n -v inside it. This is CLI evidence, not verification of the serving process.",
-        "line": 192
+        "line": 215
       },
       {
         "name": "Record incomplete Linux discovery coverage",
-        "description": "Records missing package access, unavailable Docker, failed container inspections and mapped-runtime process visibility gaps.",
-        "line": 202
+        "description": "Records missing package or container access, failed inspections and process visibility gaps. Explicitly notes that only one engine and user context was scanned; other rootless users and engines remain unassessed.",
+        "line": 225
       },
       {
         "name": "Retain version-only evidence linked to each running container",
         "description": "Associates successful PHP CLI version lines with their container IDs. A CLI version never changes the container\u2019s unknown patch status.",
-        "line": 212
+        "line": 236
       },
       {
         "name": "Assemble the host report without inferring complete coverage",
         "description": "Builds the host report with package, runtime, candidate, routing, process and container evidence. Host status is affected if a mapped runtime is affected; otherwise it remains unknown. Unsupported platforms get an explicit coverage gap.",
-        "line": 221
+        "line": 245
       }
     ]
   },

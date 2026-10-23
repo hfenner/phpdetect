@@ -1,6 +1,6 @@
 # Disposable AWS PHP lab
 
-`playbooks/build-lab-aws.yml` creates one Ubuntu 24.04 EC2 host in a dedicated CloudFormation stack, installs Docker, and deploys three fixtures. It is separate from discovery and remediation. All orchestration is Ansible YAML; there are no project Python scripts.
+`playbooks/build-lab-aws.yml` creates one Ubuntu 24.04 EC2 host in a dedicated CloudFormation stack, installs Podman and podman-compose by default (Docker is an explicit alternative), and deploys three fixtures. It is separate from discovery and remediation. All orchestration is Ansible YAML; there are no project Python scripts.
 
 | Fixture | Runtime | Purpose | Expected container discovery status |
 |---|---|---|---|
@@ -49,7 +49,7 @@ ansible-playbook -i localhost, playbooks/build-lab-aws.yml \
   -e @/private/path/aws-lab.yml -e phpdetect_lab_confirm=training
 ```
 
-This creates billed AWS resources: one t3.small by default, a 16 GiB encrypted root disk, and a public IPv4 address. There is no NAT gateway or load balancer. The instance uses IMDSv2 and no IAM instance profile. PHP containers use an internal Docker network (172.30.77.0/24), read-only root filesystems, and resource limits. They publish no Docker host ports. A host-side nginx proxy binds only to loopback and forwards to their fixed internal addresses. Only a harmless JSON runtime endpoint is deployed.
+This creates billed AWS resources: one t3.small by default, a 16 GiB encrypted root disk, and a public IPv4 address. There is no NAT gateway or load balancer. The instance uses IMDSv2 and no IAM instance profile. PHP containers use an internal container network (172.30.77.0/24), read-only root filesystems, and resource limits. They publish no container host ports. A host-side nginx proxy binds only to loopback and forwards to their fixed internal addresses. Only a harmless JSON runtime endpoint is deployed.
 
 ## Discover and test updates
 
@@ -98,3 +98,5 @@ The native stack is named `phpdetect-native-<lab ID>`. Rebuilds reuse its record
 Discovery automatically selects the Windows collector for hosts configured with `ansible_shell_type: powershell`. It records PHP executable file versions and hashes, running processes, and IIS routing hints. Its common-path search is bounded; arbitrary and bundled locations may be missed. Windows findings remain **unknown** pending authoritative vendor and serving-build evidence. RHEL retains full RPM revisions and the existing conservative vendor classifier. The native fixture labels and upstream version numbers are not patch clearance. Windows remediation is not implemented by the Linux update playbook.
 
 `aap/register-native-targets.yml` registers a successfully verified build's two VMs in an existing discovery inventory. Supply `aap_native_build_job_id`, `aap_inventory_id`, `aap_url`, and a protected `AAP_TOKEN`. The inventory must already contain `php_targets`. This playbook creates or refreshes only its marked native host records, uses the same Machine credential's SSH key, and preserves the other targets.
+
+Use `phpdetect_lab_container_engine: podman` (default) or `docker` (alternative). The selected engine is exported in discovery inventory. Existing Docker labs are not automatically migrated. Rootful Podman keeps the lab network reachable by the host loopback proxy; rootless user stores are separate. Automated Compose remediation currently supports only the Docker alternative.

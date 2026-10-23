@@ -17,7 +17,7 @@ This build also includes the AWS collection and SDK dependencies needed by the [
 
 The [build workflow](../.github/workflows/build-ee.yml) builds with Ansible Builder 3, runs classification, package parsing, syntax and Linux discovery checks as UID 1000, then publishes to the repository-linked GHCR package `ghcr.io/hfenner/phpdetect-ee`. Tags are `aap2.7` and `sha-<source commit>`. Use the **immutable digest** from the successful workflow summary or its `phpdetect-ee-build` artifact in AAP. The source checkout is supplied by the AAP Project, not baked into the EE. Inventory and credentials are never included in the image.
 
-The base and dependency patch releases are resolved at build time. Rebuild to incorporate fixes; a digest identifies the exact tested image. Local build: `ansible-builder build --container-runtime podman -t ghcr.io/hfenner/phpdetect-ee:aap2.7`. Dependencies on managed hosts (Python, apt/dnf bindings, Docker Compose where used) remain host prerequisites.
+The base and dependency patch releases are resolved at build time. Rebuild to incorporate fixes; a digest identifies the exact tested image. Local build: `ansible-builder build --container-runtime podman -t ghcr.io/hfenner/phpdetect-ee:aap2.7`. Dependencies on managed hosts (Python, apt/dnf bindings, Podman/podman-compose for new labs; Docker Compose for the alternative update adapter) remain host prerequisites.
 
 ## Install configuration with Ansible
 

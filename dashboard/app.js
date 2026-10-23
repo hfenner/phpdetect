@@ -12,7 +12,7 @@ const detectionChecks = [
  ['Explicit runtime mapping and package ownership', 'Uses inventory-supplied artifact paths, resolves symlinks, and queries dpkg/RPM ownership. This is a configured mapping, not an automatic site mapping.'],
  ['Linux live-file inspection', 'Checks mapped executables/modules and loaded file identities through /proc for current files, stale/deleted files and visibility gaps.'],
  ['Nginx and Apache configuration', 'Collects routing and virtual-host clues; does not prove a complete site-to-PHP mapping.'],
- ['Docker inventory', 'Enumerates containers and inspects image identity and running state. A container alone does not prove PHP is installed.'],
+ ['Podman container inventory', 'Uses Podman first; Docker is a supported alternative. Records image identity and running state in the selected user context. A container alone does not prove PHP is installed.'],
  ['Optional container PHP CLI probe', 'Runs php -n -v in running containers when enabled. Confirms CLI version evidence, not the serving build.'],
  ['Windows process-path discovery', 'Reads executable paths for running php.exe and php-cgi.exe processes using CIM.'],
  ['Windows common-path scan', 'Searches C:\\PHP, Program Files PHP directories, C:\\tools\\php and C:\\xampp\\php for php*.exe, to a bounded depth of two.'],
@@ -59,14 +59,14 @@ const manualChecks = [
     "Routing/virtual-host clues. Missing tools or access failures are gaps, not absence of PHP."
   ],
   [
-    "Linux shell with Docker access",
-    "docker ps -aq --no-trunc | while IFS= read -r id; do\n  docker inspect --format '{{.Id}} {{.Name}} {{.Image}} {{.Config.Image}} {{.State.Running}}' \"$id\"\ndone",
-    "Shows container ID, name, image ID/reference and running state. No environment variables are printed; PHP presence is not established."
+    "Shell on the container host, as the account owning the containers",
+    "engine=podman # Docker alternative: engine=docker\n\"$engine\" ps -aq --no-trunc | while IFS= read -r id; do\n  \"$engine\" inspect --format '{{.Id}} {{.Name}} {{.Image}} {{.Config.Image}} {{.State.Running}}' \"$id\"\ndone",
+    "Lists container identity, image and running state. Use the same engine and user as discovery. Rootless Podman containers are visible only to their owning user. This does not establish PHP presence."
   ],
   [
-    "Linux shell with Docker access; replace container ID",
-    "docker exec 'CONTAINER_ID' php -n -v",
-    "Executes the PHP CLI in the selected running container. The version is supporting evidence only."
+    "Shell on the container host, as the container owner; replace container ID",
+    "engine=podman # Docker alternative: engine=docker\n\"$engine\" exec 'CONTAINER_ID' php -n -v",
+    "Executes PHP CLI in the selected running container. This is supporting evidence, not serving-build or patch verification."
   ],
   [
     "Elevated Windows PowerShell",
@@ -109,9 +109,10 @@ const windowsCollector = "$ErrorActionPreference = 'Stop'\n$gaps = [System.Colle
 
 const shQuote = value => "'" + text(value).replace(/'/g, "'\"'\"'") + "'";
 const psQuote = value => "'" + text(value).replace(/'/g, "''") + "'";
-function manualFinding(h,location,check,containerId) {
+function manualFinding(h,location,check,containerId,containerEngine) {
   if(h.platform==='Windows')return {where:'Elevated PowerShell on '+h.host,command:windowsCollector+'\n# Inspect the recorded file directly (it may have moved since discovery).\n$path = '+psQuote(location)+'\n(Get-Item -LiteralPath $path).VersionInfo | Select-Object ProductVersion,FileVersion\nGet-FileHash -LiteralPath $path -Algorithm SHA256',expect:'Reruns the complete native collector and inspects this file. Compare JSON runtimes, processes, version and hash; per-file original discovery provenance remains unavailable in older reports.'};
-  if(check.startsWith('Docker'))return {where:'Shell with Docker access on '+h.host,command:'docker inspect --format '+shQuote('{{.Id}} {{.Name}} {{.Image}} {{.Config.Image}} {{.State.Running}}')+' '+shQuote(containerId)+'\n'+(check.includes('probe')?'docker exec '+shQuote(containerId)+' php -n -v':'# No PHP CLI probe was recorded for this container.'),expect:'Compare identity and optional CLI version with the snapshot. A removed/replaced container ID will fail; do not silently substitute another container.'};
+  const engine=['podman','docker'].includes(containerEngine)?containerEngine:(check.startsWith('Docker')?'docker':'podman');
+  if(check.startsWith('Docker') || check.startsWith('Podman') || check.startsWith('Container'))return {where:'Shell with '+engine+' access on '+h.host+' as the container owner',command:engine+' inspect --format '+shQuote('{{.Id}} {{.Name}} {{.Image}} {{.Config.Image}} {{.State.Running}}')+' '+shQuote(containerId)+'\n'+(check.includes('probe')?engine+' exec '+shQuote(containerId)+' php -n -v':'# No PHP CLI probe was recorded for this container.'),expect:'Compare identity and optional CLI version with the snapshot. A removed/replaced container ID will fail; do not silently substitute another container.'};
   if(check.includes('foreign-root'))return {where:'Root Bash on '+h.host,command:manualChecks[3][1],expect:'Find the recorded PID/path again if it is still running. PIDs may change or be reused.'};
   const ownership='artifact='+shQuote(location)+'\nresolved=$(readlink -f -- "$artifact")\nprintf "%s\\n" "$resolved"\nif command -v dpkg-query >/dev/null; then dpkg-query -S "$resolved"; else rpm -qf --qf \'%{NAME}\\n\' "$resolved"; fi\n';
   return {where:(check.startsWith('Explicit')?'Root Bash':'Bash')+' on '+h.host,command:manualChecks[1][1]+'\n# Inspect the recorded artifact.\n'+ownership+(check.startsWith('Explicit')?'PHPDETECT_ARTIFACT="$resolved"\n'+liveInspection:''),expect:check.startsWith('Explicit')?'Compare the located path, package owner and PID|current results. Current files alone do not establish patch status.':'Find this path in the scan output. Ownership is supplemental evidence; no serving-runtime or version classification is inferred.'};
@@ -119,7 +120,7 @@ function manualFinding(h,location,check,containerId) {
 function detectionFindings(hosts) {
   const findings=[];
   for (const h of hosts) {
-    const add=(location,version,check,detail,containerId)=>findings.push({host:h.host,address:h.address || 'Not recorded',location,version:version || 'Not recorded',check,detail,manual:manualFinding(h,location,check,containerId)});
+    const add=(location,version,check,detail,containerId,containerEngine)=>findings.push({host:h.host,address:h.address || 'Not recorded',location,version:version || 'Not recorded',check,detail,manual:manualFinding(h,location,check,containerId,containerEngine)});
     for (const r of array(h.runtimes)) {
       const location=r.artifact || r.id;
       if(h.platform==='Windows') {
@@ -136,7 +137,7 @@ function detectionFindings(hosts) {
     }
     for(const c of array(h.containers)) {
       const e=array(h.container_cli_evidence).find(e=>e.container_id===c.id);
-      add(c.name || c.id,text(e?.php_cli_version).match(/^PHP\s+(\S+)/)?.[1],e?'Docker inventory + PHP CLI probe':'Docker inventory only',e?'CLI PHP found inside container. Executable path and serving build not recorded.':'Container candidate; no PHP CLI evidence recorded. PHP presence unverified.',c.id);
+      add(c.name || c.id,text(e?.php_cli_version).match(/^PHP\s+(\S+)/)?.[1],(c.engine==='docker'?'Docker alternative':c.engine==='podman'?'Podman':'Container')+(e?' inventory + PHP CLI probe':' inventory only'),e?'CLI PHP found inside container. Executable path and serving build not recorded.':'Container candidate; no PHP CLI evidence recorded. PHP presence unverified.',c.id,c.engine || h.container_engine);
     }
     for(const c of array(h.foreign_runtime_candidates))add(c.process_and_artifact,'','Linux foreign-root scan','PID and executable path in another process root. May overlap container findings; not a distinct confirmed installation.');
   }

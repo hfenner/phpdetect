@@ -1,20 +1,46 @@
 ---
-- name: Install Ubuntu's Docker engine and Compose plugin
+- name: Validate the lab container engine
+  ansible.builtin.assert:
+    that: phpdetect_lab_container_engine | default('podman') in ['podman', 'docker']
+- name: Select Podman and podman-compose by default
+  ansible.builtin.set_fact:
+    lab_engine: "{{ phpdetect_lab_container_engine | default('podman') }}"
+    lab_compose: "{{ ['podman-compose'] if phpdetect_lab_container_engine | default('podman') == 'podman' else ['docker', 'compose'] }}"
+- name: Check for an existing lab configuration
+  ansible.builtin.stat:
+    path: /opt/phpdetect-lab/compose.yml
+  register: previous_lab
+- name: Read the lab engine marker if present
+  ansible.builtin.command: cat /opt/phpdetect-lab/container-engine
+  register: previous_engine
+  changed_when: false
+  failed_when: false
+- name: Refuse an implicit migration of an existing lab
+  ansible.builtin.assert:
+    that: not previous_lab.stat.exists or lab_engine == (previous_engine.stdout | trim if previous_engine.rc == 0 else 'docker')
+    fail_msg: Existing lab uses another engine (legacy unmarked labs use Docker). Select that engine explicitly or create a separate disposable lab; this playbook does not migrate container stores.
+- name: Install the selected container engine and Compose provider
   ansible.builtin.apt:
-    name: [docker.io, docker-compose-v2]
+    name: "{{ ['podman', 'podman-compose'] if lab_engine == 'podman' else ['docker.io', 'docker-compose-v2'] }}"
     state: present
     update_cache: true
-  when: phpdetect_lab_install_docker | default(true) | bool
-- name: Start Docker
+  when: phpdetect_lab_install_engine | default(true) | bool
+- name: Start Docker only when explicitly selected as the alternative
   ansible.builtin.service:
     name: docker
     state: started
     enabled: true
+  when: lab_engine == 'docker'
 - name: Create the lab content directory
   ansible.builtin.file:
     path: /opt/phpdetect-lab/www
     state: directory
     mode: '0755'
+- name: Record the lab engine for safe reruns
+  ansible.builtin.copy:
+    dest: /opt/phpdetect-lab/container-engine
+    content: '{{ lab_engine }}'
+    mode: '0644'
 - name: Write a harmless runtime identification endpoint
   ansible.builtin.copy:
     dest: /opt/phpdetect-lab/www/index.php
@@ -49,6 +75,7 @@
     lab_discovery_vars:
       phpdetect_become: true
       phpdetect_container_cli_probe: true
+      phpdetect_container_engine: "{{ lab_engine }}"
       phpdetect_runtimes: []
 - name: Build restricted Compose service definitions
   ansible.builtin.set_fact:
@@ -81,10 +108,10 @@
       'ipam': {'config': [{'subnet': '172.30.77.0/24'}]}}}} | to_nice_yaml }}
 - name: Start the lab fixtures with their immutable images
   ansible.builtin.command:
-    argv: [docker, compose, '-f', /opt/phpdetect-lab/compose.yml, up, '-d', '--no-build']
+    argv: "{{ lab_compose + ['-f', '/opt/phpdetect-lab/compose.yml', 'up', '-d', '--no-build'] }}"
   register: lab_compose_start
   changed_when: "'Started' in lab_compose_start.stderr or 'Created' in lab_compose_start.stderr or 'Recreated' in lab_compose_start.stderr"
-# Docker does not publish host ports for an internal-only network. A host-side
+# No host ports are published for the internal-only network. A host-side
 # nginx listener provides loopback access while containers remain egress-isolated.
 - name: Install the host-side loopback proxy
   ansible.builtin.apt:
@@ -139,7 +166,7 @@
   ansible.builtin.set_fact:
     lab_fixture_records: '{{ lab_fixture_records + [item | combine({"discovery_expected": "unknown"})] }}'
   loop: '{{ lab_fixtures }}'
-- name: Write a separate Compose remediation test plan
+- name: Write a separate remediation test plan for the Docker alternative
   ansible.builtin.copy:
     dest: /opt/phpdetect-lab/container-update-vars.yml
     mode: '0600'
@@ -160,3 +187,4 @@
           - url: http://127.0.0.1:18081/
             run_from: {{ inventory_hostname }}
             status_code: 200
+  when: lab_engine == 'docker'
