@@ -33,8 +33,10 @@ The default OAuth proxy image is pinned to a digest tested on OpenShift 4.20. Ov
 
 Run `node tests/dashboard.cjs` to verify conservative evidence handling and output escaping.
 
-## Public GitHub Pages demo
+## Public GitHub Pages report
 
-https://hfenner.github.io/phpdetect/ serves fictional data from `demo/sample.json`. The `deploy-demo.yml` workflow rebuilds it when dashboard files change on main. The build copies only index.html, app.js, styles.css and the sample dataset into `_site`; it never reads AAP or OpenShift reports or credentials. Do not replace the fixture with a real report.
+https://hfenner.github.io/phpdetect/ serves the owner-approved discovery snapshot in `demo/published-report.json`. This includes real lab host addresses, versions and detection evidence from AAP job 30. It is public, with no login required, and is not a live feed from AAP.
 
-The banner labels all data and patch-status examples as fictional. The OpenShift deployment continues using its authenticated report snapshot. JSON import stays local to the browser session; refreshing restores the sample data.
+The `deploy-demo.yml` workflow rebuilds the page when dashboard files change on main. Its build copies only index.html, app.js, styles.css and the explicitly approved report into `_site`. It has no AAP or OpenShift credentials and does not fetch fresh reports. Updating discovery data requires an intentional update of the published snapshot. Lab provisioning output and credentials are excluded.
+
+The fictional fixture remains in `demo/sample.json` for testing and examples. JSON imports stay local to the browser session; refresh restores the published report.

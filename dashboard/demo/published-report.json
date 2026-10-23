@@ -1,0 +1,345 @@
+{
+  "publication": "user-approved-lab-snapshot",
+  "source": {
+    "job": 30,
+    "status": "successful",
+    "finished": "2026-10-22T21:38:36.964900Z"
+  },
+  "discovery": {
+    "hosts": [
+      {
+        "address": "107.23.49.147",
+        "candidates": [],
+        "container_cli_evidence": [
+          {
+            "container_id": "b5ed35e10437a4b96b4217e073e50f04920cc071fe69ec12006f3b340962e201",
+            "patch_status": "unknown",
+            "php_cli_version": "PHP 8.4.26 (cli) (built: Oct 21 2026 00:31:19) (NTS)"
+          },
+          {
+            "container_id": "a2f7f1c1dc78f14e5e13a2d08dcea6912fe7dfb62ea7e99dfec77f3ae4198bbf",
+            "patch_status": "unknown",
+            "php_cli_version": "PHP 8.4.26 (cli) (built: Oct 21 2026 00:31:19) (NTS)"
+          },
+          {
+            "container_id": "cca7c2b1752a23231f3ae9e2e14d158d782c57dc3d249947267e1bf98bf5da8b",
+            "patch_status": "unknown",
+            "php_cli_version": "PHP 8.4.27 (cli) (built: Oct 21 2026 15:53:29) (NTS)"
+          }
+        ],
+        "containers": [
+          {
+            "id": "b5ed35e10437a4b96b4217e073e50f04920cc071fe69ec12006f3b340962e201",
+            "image_id": "sha256:60111400ff77bdc44fa79b4f072afe49a42abba71e0846ad496be4761dc9c11a",
+            "image_reference": "docker.io/library/php@sha256:60111400ff77bdc44fa79b4f072afe49a42abba71e0846ad496be4761dc9c11a",
+            "name": "/phpdetect-lab-vulnerable-1",
+            "patch_status": "unknown",
+            "running": true
+          },
+          {
+            "id": "a2f7f1c1dc78f14e5e13a2d08dcea6912fe7dfb62ea7e99dfec77f3ae4198bbf",
+            "image_id": "sha256:60111400ff77bdc44fa79b4f072afe49a42abba71e0846ad496be4761dc9c11a",
+            "image_reference": "docker.io/library/php@sha256:60111400ff77bdc44fa79b4f072afe49a42abba71e0846ad496be4761dc9c11a",
+            "name": "/phpdetect-lab-unmapped-1",
+            "patch_status": "unknown",
+            "running": true
+          },
+          {
+            "id": "cca7c2b1752a23231f3ae9e2e14d158d782c57dc3d249947267e1bf98bf5da8b",
+            "image_id": "sha256:a0b75cee7023ba2c127138dcad2ecc6ec7e09435534645e70450f29f24ea2a5a",
+            "image_reference": "docker.io/library/php@sha256:a0b75cee7023ba2c127138dcad2ecc6ec7e09435534645e70450f29f24ea2a5a",
+            "name": "/phpdetect-lab-patched-1",
+            "patch_status": "unknown",
+            "running": true
+          }
+        ],
+        "foreign_runtime_candidates": [],
+        "gaps": [],
+        "host": "phpdetect-lab-training",
+        "os_release": {
+          "BUG_REPORT_URL": "https://bugs.launchpad.net/ubuntu/",
+          "HOME_URL": "https://www.ubuntu.com/",
+          "ID": "ubuntu",
+          "ID_LIKE": "debian",
+          "LOGO": "ubuntu-logo",
+          "NAME": "Ubuntu",
+          "PRETTY_NAME": "Ubuntu 24.04.5 LTS",
+          "PRIVACY_POLICY_URL": "https://www.ubuntu.com/legal/terms-and-policies/privacy-policy",
+          "SUPPORT_URL": "https://help.ubuntu.com/",
+          "UBUNTU_CODENAME": "noble",
+          "VERSION": "24.04.5 LTS (Noble Numbat)",
+          "VERSION_CODENAME": "noble",
+          "VERSION_ID": "24.04"
+        },
+        "package_manager": "apt",
+        "patch_status": "unknown",
+        "php_packages": {},
+        "platform": "Linux",
+        "process_candidates": [
+          "   2820 apache2",
+          "   2827 apache2",
+          "   2829 apache2",
+          "   2964 apache2",
+          "   2965 apache2",
+          "   2966 apache2",
+          "   2967 apache2",
+          "   2968 apache2",
+          "   2969 apache2",
+          "   2970 apache2",
+          "   2971 apache2",
+          "   2973 apache2",
+          "   2974 apache2",
+          "   2975 apache2",
+          "   2976 apache2",
+          "   2977 apache2",
+          "   2978 apache2",
+          "   2979 apache2"
+        ],
+        "products": [],
+        "routing_hints": [
+          "  server_name localhost;",
+          "    proxy_pass http://172.30.77.11:80;",
+          "  server_name localhost;",
+          "    proxy_pass http://172.30.77.12:80;",
+          "  server_name localhost;",
+          "    proxy_pass http://172.30.77.13:80;"
+        ],
+        "runtimes": [],
+        "scope_note": "Configured runtime results do not prove complete host, container, or website coverage."
+      },
+      {
+        "address": "18.215.143.44",
+        "candidates": [
+          "/usr/bin/php",
+          "/usr/bin/php-cgi",
+          "/usr/sbin/php-fpm"
+        ],
+        "container_cli_evidence": [],
+        "containers": [],
+        "foreign_runtime_candidates": [],
+        "gaps": [
+          "Docker unavailable or inaccessible; container coverage unknown"
+        ],
+        "host": "phpdetect-rhel-training",
+        "os_release": {
+          "ANSI_COLOR": "0;31",
+          "BUG_REPORT_URL": "https://issues.redhat.com/",
+          "CPE_NAME": "cpe:/o:redhat:enterprise_linux:9::baseos",
+          "DOCUMENTATION_URL": "https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/9",
+          "HOME_URL": "https://www.redhat.com/",
+          "ID": "rhel",
+          "ID_LIKE": "fedora",
+          "LOGO": "fedora-logo-icon",
+          "NAME": "Red Hat Enterprise Linux",
+          "PLATFORM_ID": "platform:el9",
+          "PRETTY_NAME": "Red Hat Enterprise Linux 9.6 (Plow)",
+          "REDHAT_BUGZILLA_PRODUCT": "Red Hat Enterprise Linux 9",
+          "REDHAT_BUGZILLA_PRODUCT_VERSION": "9.6",
+          "REDHAT_SUPPORT_PRODUCT": "Red Hat Enterprise Linux",
+          "REDHAT_SUPPORT_PRODUCT_VERSION": "9.6",
+          "VERSION": "9.6 (Plow)",
+          "VERSION_ID": "9.6"
+        },
+        "package_manager": "dnf",
+        "patch_status": "unknown",
+        "php_packages": {
+          "php": "0:8.0.30-8.el9_8.1.x86_64",
+          "php-cli": "0:8.0.30-8.el9_8.1.x86_64",
+          "php-common": "0:8.0.30-8.el9_8.1.x86_64",
+          "php-fpm": "0:8.0.30-8.el9_8.1.x86_64",
+          "php-mbstring": "0:8.0.30-8.el9_8.1.x86_64",
+          "php-opcache": "0:8.0.30-8.el9_8.1.x86_64",
+          "php-pdo": "0:8.0.30-8.el9_8.1.x86_64",
+          "php-xml": "0:8.0.30-8.el9_8.1.x86_64"
+        },
+        "platform": "Linux",
+        "process_candidates": [
+          "  20623 php-fpm",
+          "  20624 php-fpm",
+          "  20625 php-fpm",
+          "  20626 php-fpm",
+          "  20627 php-fpm",
+          "  20628 php-fpm",
+          "  20763 httpd",
+          "  20764 httpd",
+          "  20765 httpd",
+          "  20766 httpd",
+          "  20767 httpd"
+        ],
+        "products": [],
+        "routing_hints": [
+          "VirtualHost configuration:",
+          "ServerRoot: \"/etc/httpd\"",
+          "Main DocumentRoot: \"/var/www/html\"",
+          "Main ErrorLog: \"/etc/httpd/logs/error_log\"",
+          "Mutex proxy: using_defaults",
+          "Mutex authn-socache: using_defaults",
+          "Mutex default: dir=\"/etc/httpd/run/\" mechanism=default ",
+          "Mutex cache-socache: using_defaults",
+          "Mutex watchdog-callback: using_defaults",
+          "Mutex proxy-balancer-shm: using_defaults",
+          "Mutex rewrite-map: using_defaults",
+          "Mutex authdigest-client: using_defaults",
+          "Mutex dav_fs-lockdb: using_defaults",
+          "Mutex lua-ivm-shm: using_defaults",
+          "PidFile: \"/etc/httpd/run/httpd.pid\"",
+          "Define: DUMP_VHOSTS",
+          "Define: DUMP_RUN_CFG",
+          "User: name=\"apache\" id=48",
+          "Group: name=\"apache\" id=48"
+        ],
+        "runtimes": [
+          {
+            "artifact": "/usr/sbin/php-fpm",
+            "evidence": {},
+            "exposure": "internal",
+            "id": "rhel-native-fpm",
+            "package_owner": "php-fpm",
+            "patch_status": "unknown",
+            "priority": "P2",
+            "processes": [
+              {
+                "current": true,
+                "pid": "20623"
+              },
+              {
+                "current": true,
+                "pid": "20624"
+              },
+              {
+                "current": true,
+                "pid": "20625"
+              },
+              {
+                "current": true,
+                "pid": "20626"
+              },
+              {
+                "current": true,
+                "pid": "20627"
+              },
+              {
+                "current": true,
+                "pid": "20628"
+              }
+            ],
+            "reason": "Vendor, package, OS, or ownership evidence incomplete or mismatched",
+            "running_build_verified": true,
+            "sites": [
+              "http://127.0.0.1:18080/index.php"
+            ],
+            "visibility_gaps": []
+          }
+        ],
+        "scope_note": "Configured runtime results do not prove complete host, container, or website coverage."
+      },
+      {
+        "address": "13.222.190.86",
+        "container_cli_evidence": [],
+        "containers": [],
+        "gaps": [
+          "Windows discovery covers running PHP executables and common installation paths only; bundled products and arbitrary paths may be missed"
+        ],
+        "host": "phpdetect-windows-training",
+        "os_release": {
+          "ID": "windows",
+          "PRETTY_NAME": "Microsoft Windows Server 2022 Datacenter",
+          "VERSION_ID": "10.0.20348"
+        },
+        "package_manager": "unknown",
+        "patch_status": "unknown",
+        "php_packages": {},
+        "platform": "Windows",
+        "products": [],
+        "routing_hints": [
+          {
+            "bindings": [
+              "127.0.0.1:18080:"
+            ],
+            "name": "phpdetect",
+            "path": "C:\\inetpub\\phpdetect"
+          }
+        ],
+        "runtimes": [
+          {
+            "artifact": "C:\\PHP\\php.exe",
+            "evidence": {
+              "file_version": "8.4.27",
+              "sha256": "038c880149bd60e9832b2c986bb93f72facb163c40fb5328d1bc996aef4c0487"
+            },
+            "exposure": "unknown",
+            "id": "C:\\PHP\\php.exe",
+            "package_owner": "",
+            "patch_status": "unknown",
+            "priority": "P1",
+            "processes": [],
+            "reason": "Native Windows PHP found. Vendor patch evidence, serving-site mapping, and loaded-build identity are not verified.",
+            "running_build_verified": false,
+            "sites": [],
+            "version": "8.4.27"
+          },
+          {
+            "artifact": "C:\\PHP\\php-cgi.exe",
+            "evidence": {
+              "file_version": "8.4.27",
+              "sha256": "5da4bdf2d54912b0e3e7cd525458ef09d8de64fdc26ac1f765f79e715d003d20"
+            },
+            "exposure": "unknown",
+            "id": "C:\\PHP\\php-cgi.exe",
+            "package_owner": "",
+            "patch_status": "unknown",
+            "priority": "P1",
+            "processes": [
+              {
+                "executable": "C:\\PHP\\php-cgi.exe",
+                "pid": 3736
+              }
+            ],
+            "reason": "Native Windows PHP found. Vendor patch evidence, serving-site mapping, and loaded-build identity are not verified.",
+            "running_build_verified": false,
+            "sites": [],
+            "version": "8.4.27"
+          },
+          {
+            "artifact": "C:\\PHP\\phpdbg.exe",
+            "evidence": {
+              "file_version": "8.4.27",
+              "sha256": "51c543a3e2fe3e45ad9add80f06f1e6e3290451833e4e12a1baa5a962b18c1aa"
+            },
+            "exposure": "unknown",
+            "id": "C:\\PHP\\phpdbg.exe",
+            "package_owner": "",
+            "patch_status": "unknown",
+            "priority": "P1",
+            "processes": [],
+            "reason": "Native Windows PHP found. Vendor patch evidence, serving-site mapping, and loaded-build identity are not verified.",
+            "running_build_verified": false,
+            "sites": [],
+            "version": "8.4.27"
+          },
+          {
+            "artifact": "C:\\PHP\\php-win.exe",
+            "evidence": {
+              "file_version": "8.4.27",
+              "sha256": "db9c1eb0d1d41a3fee7c095ecd7db08900f5d26cc82d2ed37fcc105a4e272419"
+            },
+            "exposure": "unknown",
+            "id": "C:\\PHP\\php-win.exe",
+            "package_owner": "",
+            "patch_status": "unknown",
+            "priority": "P1",
+            "processes": [],
+            "reason": "Native Windows PHP found. Vendor patch evidence, serving-site mapping, and loaded-build identity are not verified.",
+            "running_build_verified": false,
+            "sites": [],
+            "version": "8.4.27"
+          }
+        ],
+        "scope_note": "Windows native file/process inventory is evidence only; it does not establish patch status or complete host coverage."
+      }
+    ],
+    "ncsc_commit": "94b4b16db9e504d1da65efa5bb9f0dc9afcab4ca",
+    "scope_note": "Unknown is not clearance; failed or excluded hosts retain unknown seeds.",
+    "status": "complete"
+  }
+}

@@ -2,7 +2,7 @@
 
 # phpdetect
 
-[Open the public dashboard demo](https://hfenner.github.io/phpdetect/) — fictional sample hosts and findings only; no login required. Status examples are illustrative, not vendor patch guidance.
+[Open the public lab dashboard](https://hfenner.github.io/phpdetect/) — owner-approved lab discovery snapshot; no login required. See the job number and collection time on the page. Unknown findings are not clearance.
 
 Executable Ansible automation for PHP2Shell discovery and separately invoked remediation. No exploit probes. Discovery never installs packages, changes configuration, or restarts managed services; Ansible uses its normal temporary module transport and writes private reports on the controller.
 
