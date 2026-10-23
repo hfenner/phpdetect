@@ -75,8 +75,7 @@
 - name: Add mapped and deliberately unverified runtime cases
   ansible.builtin.set_fact:
     lab_discovery_vars: >-
-      {{ lab_discovery_vars | combine({'phpdetect_runtimes': [
-      {'id': 'lab-vendor-fpm', 'kind': 'package', 'exposure': 'internal',
+      {{ lab_discovery_vars | combine({'phpdetect_runtimes': [{'id': 'lab-vendor-fpm', 'kind': 'package', 'exposure': 'internal',
       'sites': ['http://127.0.0.1:18080/'], 'artifact': '/usr/sbin/php-fpm8.3',
       'evidence': phpdetect_lab_package.evidence},
       {'id': 'lab-no-evidence', 'kind': 'package', 'exposure': 'internal',

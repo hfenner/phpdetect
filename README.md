@@ -64,6 +64,16 @@ Use [Build PHP lab](playbooks/build-lab-aws.yml) and the separate [teardown play
 
 ## Validation
 
+[Ansible lint](https://github.com/hfenner/phpdetect/actions/workflows/ansible-lint.yml) runs on every pull request, push to `main`, and manual dispatch. It installs the required collections and runs `ansible-lint --offline --strict`; lint findings fail the job. YAML line-length limits are disabled to preserve inline shell, PowerShell, and Jinja expressions. Other lint rules remain enabled.
+
+To reproduce the CI lint check with Python 3.12:
+
+```sh
+pip install 'ansible-core>=2.19,<2.20' 'ansible-lint==26.10.1'
+ansible-galaxy collection install -r requirements.yml
+ansible-lint --offline --strict
+```
+
 ```sh
 ansible-playbook tests/classification.yml
 ansible-playbook tests/package-parsing.yml

@@ -5,7 +5,8 @@
   vars:
     native: '{{ (lookup("file", playbook_dir ~ "/../playbooks/build-native-lab-aws.yml") | from_yaml)[0].vars.native_stack_template }}'
   tasks:
-    - ansible.builtin.assert:
+    - name: Verify native lab isolation and instance safeguards
+      ansible.builtin.assert:
         that:
           - native.Resources.SecurityGroup.Properties.SecurityGroupIngress | length == 1
           - native.Resources.SecurityGroup.Properties.SecurityGroupIngress[0].FromPort == 22

@@ -80,8 +80,7 @@
 - name: Build restricted Compose service definitions
   ansible.builtin.set_fact:
     lab_compose_services: >-
-      {{ lab_compose_services | combine({item.name: {
-      'image': item.image,
+      {{ lab_compose_services | combine({item.name: {'image': item.image,
       'volumes': ['/opt/phpdetect-lab/www:/var/www/html:ro'],
       'restart': 'no', 'read_only': true,
       'tmpfs': ['/tmp', '/var/run/apache2', '/var/lock/apache2'],
@@ -102,8 +101,7 @@
     dest: /opt/phpdetect-lab/compose.fixed.yml
     mode: '0644'
     content: >-
-      {{ {'name': 'phpdetect-lab', 'services': lab_compose_services | combine({
-      'vulnerable': lab_compose_services.vulnerable | combine({'image': lab_fixtures[1].image})}),
+      {{ {'name': 'phpdetect-lab', 'services': lab_compose_services | combine({'vulnerable': lab_compose_services.vulnerable | combine({'image': lab_fixtures[1].image})}),
       'networks': {'isolated': {'internal': true,
       'ipam': {'config': [{'subnet': '172.30.77.0/24'}]}}}} | to_nice_yaml }}
 - name: Start the lab fixtures with their immutable images

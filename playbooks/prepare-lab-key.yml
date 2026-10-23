@@ -14,7 +14,8 @@
       amazon.aws.aws_caller_info:
       register: key_account
       no_log: true
-    - ansible.builtin.assert:
+    - name: Require the expected AWS account
+      ansible.builtin.assert:
         that: key_account.account == phpdetect_expected_aws_account | string
     - name: Read the injected public identity
       ansible.builtin.command: ssh-add -L

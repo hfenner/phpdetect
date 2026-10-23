@@ -46,11 +46,14 @@
     $reply = Invoke-RestMethod 'http://127.0.0.1:18080/index.php'
     if ($reply.lab -ne 'phpdetect' -or $reply.php_version -ne $version) { throw 'Serving PHP verification failed' }
     $reply | ConvertTo-Json -Compress
+  # The fixture rebuilds the IIS site on every run.
+  changed_when: true
   register: native_windows_install
 - name: Confirm Windows is serving PHP through IIS
   ansible.builtin.assert:
     that:
       - native_windows_install.rc == 0
       - "'8.4.27' in native_windows_install.stdout"
-- ansible.builtin.set_fact:
+- name: Record native Windows fixture readiness
+  ansible.builtin.set_fact:
     native_fixture_ready: true

@@ -23,7 +23,7 @@
       $path = $_
       try {
         $f = Get-Item -LiteralPath $path
-        $live = @($processes | Where-Object { $_.ExecutablePath -eq $path } | ForEach-Object { @{pid=$_.ProcessId;executable=$_.ExecutablePath} })
+        $live = @($processes | Where-Object { $_.ExecutablePath -eq $path } | ForEach-Object { @{pid=$_.ProcessId;'executable' = $_.ExecutablePath} })
         @{id=$path;artifact=$path;version=$f.VersionInfo.ProductVersion;package_owner='';patch_status='unknown';exposure='unknown';priority='P1';running_build_verified=$false;processes=$live;sites=@();evidence=@{sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLower();file_version=$f.VersionInfo.FileVersion};reason='Native Windows PHP found. Vendor patch evidence, serving-site mapping, and loaded-build identity are not verified.'}
       } catch { $gaps.Add("Cannot inspect $path") }
     })

@@ -2,7 +2,8 @@
 - name: Confirm the RHEL guest platform
   ansible.builtin.setup:
     gather_subset: [min]
-- ansible.builtin.assert:
+- name: Require RHEL 9 for the native fixture
+  ansible.builtin.assert:
     that:
       - ansible_facts.distribution == 'RedHat'
       - ansible_facts.distribution_major_version == '9'
@@ -17,16 +18,16 @@
 - name: Bind the lab website to loopback only
   ansible.builtin.lineinfile:
     path: /etc/httpd/conf/httpd.conf
-    regexp: '^Listen '
+    regexp: "^Listen "
     line: Listen 127.0.0.1:18080
 - name: Write a harmless native PHP identification page
   ansible.builtin.copy:
     dest: /var/www/html/index.php
-    mode: '0644'
+    mode: "0644"
     content: '<?php header("Content-Type: application/json"); echo json_encode(["lab" => "phpdetect", "platform" => "RHEL", "php_version" => PHP_VERSION]);'
 - name: Start native PHP-FPM and Apache
   ansible.builtin.service:
-    name: '{{ item }}'
+    name: "{{ item }}"
     state: restarted
     enabled: true
   loop: [php-fpm, httpd]
@@ -39,11 +40,14 @@
   retries: 10
   delay: 3
   until: native_rhel_http.status | default(0) == 200
-- ansible.builtin.assert:
+- name: Verify the native PHP HTTP response
+  ansible.builtin.assert:
     that:
       - native_rhel_http.json.lab == 'phpdetect'
       - native_rhel_http.json.php_version is match('^[0-9]+[.][0-9]+[.]')
-- ansible.builtin.set_fact:
+- name: Record native RHEL fixture readiness
+  ansible.builtin.set_fact:
     native_fixture_ready: true
-- ansible.builtin.debug:
-    msg: 'RHEL serving PHP {{ native_rhel_http.json.php_version }} through native Apache/PHP-FPM. Vendor patch status requires separate evidence.'
+- name: Report the serving RHEL PHP version
+  ansible.builtin.debug:
+    msg: "RHEL serving PHP {{ native_rhel_http.json.php_version }} through native Apache/PHP-FPM. Vendor patch status requires separate evidence."

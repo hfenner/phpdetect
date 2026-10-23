@@ -3,5 +3,7 @@
   hosts: localhost
   gather_facts: false
   tasks:
-    - ansible.builtin.import_tasks: ../playbooks/lab/native-windows.yml
-    - ansible.builtin.import_tasks: ../playbooks/tasks/collect-windows.yml
+    - name: Load native Windows fixture tasks
+      ansible.builtin.import_tasks: ../playbooks/lab/native-windows.yml
+    - name: Load Windows discovery tasks
+      ansible.builtin.import_tasks: ../playbooks/tasks/collect-windows.yml
