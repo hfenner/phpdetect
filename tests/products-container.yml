@@ -11,6 +11,11 @@
       register: container_product_dir
     - name: Exercise the container probe and always clean up
       block:
+        - name: Allow the capability-restricted container to traverse the synthetic fixture root
+          ansible.builtin.file:
+            path: '{{ container_product_dir.path }}'
+            state: directory
+            mode: '0755'
         - name: Create a WordPress signature directory
           ansible.builtin.file:
             path: '{{ container_product_dir.path }}/wp-includes'
