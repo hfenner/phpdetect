@@ -1,0 +1,62 @@
+---
+- name: Initialize automatic product evidence and supported signatures
+  ansible.builtin.set_fact:
+    product_matches: []
+    product_candidates: []
+    product_gaps:
+      - Product discovery covers eight signatures in bounded web roots only; missing findings never establish absence.
+      - Product versions and NCSC statements do not establish installed PHP patch status.
+    product_signatures:
+      - {id: wordpress, name: WordPress, ncsc_term: WordPress, marker: wp-includes/version.php, companion: wp-settings.php, version_key: wp_version}
+      - {id: drupal, name: Drupal, ncsc_term: Drupal, marker: core/lib/Drupal.php, companion: core/modules/system/system.info.yml, version_key: VERSION}
+      - {id: joomla, name: Joomla, ncsc_term: Joomla, marker: administrator/manifests/files/joomla.xml, companion: includes/defines.php, version_key: '<version>'}
+      - {id: nextcloud, name: Nextcloud Server, ncsc_term: Nextcloud Server, marker: version.php, companion: occ, version_key: OC_VersionString, identity_token: nextcloud}
+      - {id: moodle, name: Moodle, ncsc_term: Moodle, marker: version.php, companion: lib/moodlelib.php, version_key: release}
+      - {id: mediawiki, name: MediaWiki, ncsc_term: MediaWiki, marker: includes/Defines.php, companion: maintenance/run.php, version_key: MW_VERSION}
+      - {id: glpi, name: GLPI, ncsc_term: GLPI, marker: inc/define.php, companion: front/central.php, version_key: GLPI_VERSION}
+      - {id: zabbix, name: Zabbix web frontend, ncsc_term: Zabbix web frontend, marker: include/defines.inc.php, companion: zabbix.php, version_key: ZABBIX_VERSION}
+
+- name: Validate bounded product discovery inputs
+  ansible.builtin.assert:
+    that:
+      - phpdetect_product_depth | default(6) | int >= 1
+      - phpdetect_product_depth | default(6) | int <= 10
+      - phpdetect_product_roots | default([]) is sequence
+      - phpdetect_product_roots | default([]) is not string
+      - phpdetect_product_container_roots | default([]) is sequence
+      - phpdetect_product_container_roots | default([]) is not string
+
+- name: Inspect each supported product signature without executing application files
+  ansible.builtin.include_tasks: product-files.yml
+  loop: '{{ product_signatures }}'
+  loop_control:
+    loop_var: product_signature
+    label: '{{ product_signature.name }}'
+
+- name: Record product collection scope and container limitations
+  ansible.builtin.set_fact:
+    product_gaps: >-
+      {{ product_gaps + ['Search depth is ' ~ (phpdetect_product_depth | default(6) | string)
+      ~ '; symlink directories are not followed; unreadable files and custom layouts may be missed.']
+      + ([] if phpdetect_product_container_probe | default(false) | bool else ['Container product file inspection disabled'])
+      + ['Container product inspection covers only running containers in the selected engine and user context; stopped containers remain unassessed.'] }}
+
+- name: Attach NCSC references and runtime associations to discovered products
+  ansible.builtin.include_tasks: product-match.yml
+  loop: '{{ product_candidates | unique }}'
+  loop_control:
+    loop_var: detected_product
+    label: '{{ detected_product.name }} at {{ detected_product.location }}'
+
+- name: Preserve explicitly declared products as operator supplied evidence
+  ansible.builtin.set_fact:
+    product_matches: >-
+      {{ product_matches + [{'product': item, 'identity_status': 'operator_supplied', 'check': 'Inventory product declaration',
+      'patch_status': 'unknown', 'ncsc_commit': hostvars.localhost.ncsc_snapshot.commit_sha,
+      'ncsc_matches': ((hostvars.localhost.ncsc_snapshot.pages | map(attribute='content') | join('\n')).splitlines()
+      | select('search', item.ncsc_term | regex_escape) | list)}] }}
+  loop: '{{ phpdetect_products | default([]) }}'
+
+- name: Add product coverage limitations to the host assessment
+  ansible.builtin.set_fact:
+    assessment_report: '{{ assessment_report | combine({"gaps": assessment_report.gaps | default([]) + product_gaps}) }}'

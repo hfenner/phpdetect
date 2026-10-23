@@ -30,7 +30,7 @@ Use [package host variables](inventory/runtime.example.yml) or [Docker-alternati
 
 ## Discovery: `playbooks/discover.yml`
 
-- Reads the bundled, commit-pinned NCSC product inventory from `data/ncsc/snapshot.json` and matches configured product terms without network requests. Matches are candidates, never proof of remediation; absent matches do not clear products. Missing or malformed snapshots fail discovery. The former `phpdetect_fetch_ncsc` variable is no longer used; discovery always reads local data.
+- Reads the bundled, commit-pinned NCSC product inventory from `data/ncsc/snapshot.json` and matches automatically identified products and configured product terms without network requests. Matches are candidates, never proof of remediation; absent matches do not clear products. Missing or malformed snapshots fail discovery. The former `phpdetect_fetch_ncsc` variable is no longer used; discovery always reads local data.
 - The `Update bundled NCSC lists` GitHub Action checks NCSC `main` hourly and supports manual runs. It commits refreshed data to this repository’s default branch using `GITHUB_TOKEN` with `contents: write`. Enable Actions and allow that workflow to write to the default branch; branch protection may prevent direct bot commits. Scheduled runs begin once the workflow is on the default branch, can be delayed by GitHub, and capture the latest upstream commit rather than every intervening push. No upstream workflow access or personal token is required. See [snapshot provenance and local refresh](data/ncsc/README.md).
 - Inventories full PHP package revisions, common installation paths, live PHP processes, Apache PHP module candidates, web-server routing hints, and Podman containers (Docker is an alternative). Containers are inventoried by image identity only. With `-e phpdetect_container_cli_probe=true`, running containers are additionally checked with `podman exec ... php -n -v` (or `docker exec` for Docker targets) for supporting CLI version evidence; this executes a binary from the container image and does not verify its web-serving runtime. Does not dump environment variables or application secrets.
 - Joins inventory-defined website/runtime relationships to observed binaries, package ownership, process identities, and mapped files. Processes in another mount namespace (containers, chroots) are reported separately and never matched against host artifacts. Anonymous shared memory, memfd, device, and temporary-file mappings are ignored when checking for stale libraries. `sites` and the artifact path must be supplied for authoritative mapping; it cannot infer every load-balancer route or arbitrary application layout. Unmapped candidates remain unknown.
@@ -40,6 +40,41 @@ Use [package host variables](inventory/runtime.example.yml) or [Docker-alternati
 A runtime is `patched` only when operator-reviewed evidence covers **both CVEs**, matches OS release and exact full package revisions, includes the owning package, and all matching running artifacts are current. Missing visibility, missing workers, stale executables/libraries, or incomplete evidence yields `unknown`. The procfs scan always covers every process: a process that cannot be inspected is recorded as a visibility gap with its PID and cause (in the runtime's `visibility_gaps`, its `reason`, and the host `gaps`) rather than aborting the scan, and any gap keeps the runtime `unknown`. Exact vendor evidence can classify `affected`. Host status remains unknown unless an affected runtime is found: checking a configured subset cannot establish complete host clearance. HTTP headers and upstream version numbers alone never establish clearance.
 
 The `evidence.channel` field records the operator's reviewed vendor channel; this implementation verifies package identities, not repository signing provenance. Its conclusions rely on the correctness of the supplied vendor evidence and site-to-runtime mapping. A patched result is not an incident-response clearance.
+
+## Automatic product identification
+
+Discovery now checks **WordPress, Drupal, Joomla, Nextcloud Server, Moodle, MediaWiki, GLPI and Zabbix web frontend**. All probes are inline Ansible tasks in `playbooks/tasks/products.yml` and its included task files; no external Python scripts or application PHP files are executed.
+
+| Product | Required files relative to installation root | Version evidence |
+| --- | --- | --- |
+| WordPress | `wp-includes/version.php`, `wp-settings.php` | `wp_version` |
+| Drupal (modern core layout) | `core/lib/Drupal.php`, `core/modules/system/system.info.yml` | `VERSION` |
+| Joomla | `administrator/manifests/files/joomla.xml`, `includes/defines.php` | XML `version` |
+| Nextcloud Server | `version.php`, `occ` | `OC_VersionString` plus `nextcloud` vendor marker |
+| Moodle (legacy/root layout) | `version.php`, `lib/moodlelib.php` | `release` |
+| MediaWiki (modern maintenance layout) | `includes/Defines.php`, `maintenance/run.php` | `MW_VERSION` |
+| GLPI 10.x layout | `inc/define.php`, `front/central.php` | `GLPI_VERSION` |
+| Zabbix frontend | `include/defines.inc.php`, `zabbix.php` | `ZABBIX_VERSION` |
+
+Linux defaults search `/var/www`, `/srv/www`, `/usr/share/webapps`, `/usr/share/zabbix`, `/usr/share/glpi` and `/opt`. Windows defaults search `C:\inetpub\wwwroot`, `C:\xampp\htdocs` and accessible IIS physical paths. Override `phpdetect_product_roots` for custom deployments. The default depth is six (allowed range 1–10); Linux depth counts path components to the marker file, while Windows depth bounds installation-root directories. Linux reads at most 256 KiB of a version marker; Windows skips larger marker files. Numeric version evidence omits prerelease/build suffixes and is not a package revision.
+
+Optional `phpdetect_product_container_probe: true` searches running containers with the selected Podman engine (Docker alternative). Default container roots are `/var/www`, `/usr/share/nginx/html`, `/app` and `/opt`, configurable with `phpdetect_product_container_roots`. This executes a read-only shell probe in the container, not PHP. Containers without a shell/find utilities, stopped containers, other engines and other users remain unassessed.
+
+Each `products[]` finding records the product, version evidence, installation location, identifying files, discovery check, container identity where applicable, matching NCSC product rows and snapshot commit. Exact `document_roots` on `phpdetect_runtimes` create **operator-configured associations** to assessed runtime IDs. Container findings can link to optional PHP CLI evidence from the same container. Neither association proves which build serves requests. Unmapped products remain `runtime_mapping_status: unknown`; **all product patch statuses remain unknown**. NCSC vulnerability/fix statements are advisory context, not a local vulnerability verdict. Legacy `phpdetect_products` declarations are retained as `operator_supplied` evidence.
+
+```yaml
+phpdetect_product_roots: [/var/www, /srv/customer-sites]
+phpdetect_product_depth: 6
+phpdetect_product_container_probe: true
+phpdetect_runtimes:
+  - id: storefront-fpm
+    artifact: /usr/sbin/php-fpm
+    document_roots: [/srv/customer-sites/storefront]
+```
+
+Rerun `ansible-playbook -i /path/to/inventory.yml playbooks/discover.yml` with the same variables to reproduce the checks. Inspect `products[]`, `ncsc_matches`, `runtime_links` and host `gaps` in the generated report. The dashboard lists these findings under product identification. Existing published reports are historical snapshots and do not acquire findings until discovery is rerun and the new report is explicitly published.
+
+Signatures can identify inactive copies and can be spoofed; this is not vendor authentication. Custom layouts, older/newer release layouts, symlinked trees and products outside these eight integrations may be missed. Missing matches never establish absence. CI exercises the real Linux, Windows PowerShell, Podman and Docker probes against isolated fixtures, including incomplete signatures, an ownCloud lookalike, repeat scans and conservative runtime associations.
 
 ## Updates: `playbooks/update.yml`
 

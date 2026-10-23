@@ -18,7 +18,7 @@ const detectionChecks = [
  ['Windows common-path scan', 'Searches C:\\PHP, Program Files PHP directories, C:\\tools\\php and C:\\xampp\\php for php*.exe, to a bounded depth of two.'],
  ['Windows file inspection', 'Reads product/file versions and SHA-256 hashes without executing discovered binaries.'],
  ['IIS website inventory', 'Reads website names, physical paths and bindings. PHP handler and loaded-build verification are not implemented.'],
- ['NCSC product matching', 'Matches inventory-supplied product terms against the bundled snapshot. Does not automatically discover products or establish patch status.'],
+ ['Product identification and NCSC matching', 'Finds WordPress, Drupal, Joomla, Nextcloud, Moodle, MediaWiki, GLPI and Zabbix through paired files and version markers in bounded Linux/Windows web roots, with optional container probes. Attaches NCSC product rows; patch status remains unknown.'],
  ['Vendor-evidence classification', 'Checks supplied advisory metadata, exact OS and package revisions, ownership and configured CVEs. Patched also requires verified live files. No automatic vendor-advisory retrieval.'],
  ['Coverage and connection checks', 'Preserves unreachable hosts, missing evidence and collection gaps as unknown. Discovery never establishes complete host clearance.']
 ];
@@ -93,7 +93,7 @@ const manualChecks = [
   [
     "Ansible control node / project checkout with the existing inventory",
     "ansible-playbook -i /path/to/inventory.yml playbooks/discover.yml",
-    "Use the same phpdetect_products inventory entries and bundled NCSC snapshot. Inspect products[].ncsc_matches in summary.json. This reruns discovery, not remediation."
+    "Use the same phpdetect_product_roots, depth, optional phpdetect_product_container_probe and runtime document_roots. Inspect products[] for identifying files, location, version, check, runtime_links and ncsc_matches. Legacy inventory declarations remain labeled operator_supplied. This reruns discovery, not remediation."
   ],
   [
     "Ansible control node / project checkout with vendor evidence in inventory",
@@ -110,6 +110,7 @@ const manualChecks = [
 const shQuote = value => "'" + text(value).replace(/'/g, "'\"'\"'") + "'";
 const psQuote = value => "'" + text(value).replace(/'/g, "''") + "'";
 function manualFinding(h,location,check,containerId,containerEngine) {
+  if(check.includes('product file signatures'))return {where:manualChecks[13][0],command:manualChecks[13][1],expect:manualChecks[13][2]};
   if(h.platform==='Windows')return {where:'Elevated PowerShell on '+h.host,command:'& {\n'+windowsCollector+'}\n# Inspect the recorded file directly (it may have moved since discovery).\n$path = '+psQuote(location)+'\n(Get-Item -LiteralPath $path).VersionInfo | Select-Object ProductVersion,FileVersion\nGet-FileHash -LiteralPath $path -Algorithm SHA256',expect:'Reruns the complete native collector and inspects this file. Compare JSON runtimes, processes, version and hash; per-file original discovery provenance remains unavailable in older reports.'};
   const engine=['podman','docker'].includes(containerEngine)?containerEngine:(check.startsWith('Docker')?'docker':'podman');
   if(check.startsWith('Docker') || check.startsWith('Podman') || check.startsWith('Container'))return {where:'Shell with '+engine+' access on '+h.host+' as the container owner',command:engine+' inspect --format '+shQuote('{{.Id}} {{.Name}} {{.Image}} {{.Config.Image}} {{.State.Running}}')+' '+shQuote(containerId)+'\n'+(check.includes('probe')?engine+' exec '+shQuote(containerId)+' php -n -v':'# No PHP CLI probe was recorded for this container.'),expect:'Compare identity and optional CLI version with the snapshot. A removed/replaced container ID will fail; do not silently substitute another container.'};
@@ -139,6 +140,7 @@ function detectionFindings(hosts) {
       const e=array(h.container_cli_evidence).find(e=>e.container_id===c.id);
       add(c.name || c.id,text(e?.php_cli_version).match(/^PHP\s+(\S+)/)?.[1],(c.engine==='docker'?'Docker alternative':c.engine==='podman'?'Podman':'Container')+(e?' inventory + PHP CLI probe':' inventory only'),e?'CLI PHP found inside container. Executable path and serving build not recorded.':'Container candidate; no PHP CLI evidence recorded. PHP presence unverified.',c.id,c.engine || h.container_engine);
     }
+    for(const p of array(h.products).filter(p=>p.identity_status==='file_signature_match'))add(p.location,p.product?.version,p.check,'Product installation candidate: '+text(p.product?.name)+'. Files: '+array(p.evidence_files).join(', ')+'. Runtime mapping: '+(p.runtime_mapping_status || 'unknown')+'. PHP patch status: unknown. This is not a separate PHP runtime.',p.container_id,p.engine);
     for(const c of array(h.foreign_runtime_candidates))add(c.process_and_artifact,'','Linux foreign-root scan','PID and executable path in another process root. May overlap container findings; not a distinct confirmed installation.');
   }
   return findings;

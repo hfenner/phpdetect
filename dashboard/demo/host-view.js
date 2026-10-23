@@ -17,7 +17,7 @@ function hostChecks(h) {
     if(i===9) records=array(h.runtimes).flatMap(r=>array(r.processes).map(p=>(r.artifact || r.id)+' · PID '+p.pid));
     if(i===10) records=array(h.runtimes).map(r=>(r.artifact || r.id)+' · Original directory/process discovery source not recorded');
     if(i===11) records=array(h.runtimes).map(r=>(r.artifact || r.id)+' · '+(r.version || 'Version not recorded')+' · SHA-256: '+(r.evidence?.sha256 || 'Not recorded'));
-    if(i===13) records=array(h.products).map(text);
+    if(i===13) records=array(h.products).map(p=>p.identity_status==='file_signature_match' ? text(p.product?.name)+' '+text(p.product?.version)+' · '+p.check+' · '+p.location+(p.container_id?' · '+p.engine+' container '+p.container_id:'')+' · Files: '+array(p.evidence_files).join(', ')+' · Runtime links: '+text(p.runtime_links)+' · NCSC: '+text(p.ncsc_matches)+' · Patch status: unknown' : 'Operator-supplied product: '+text(p));
     if(i===14) records=array(h.runtimes).map(r=>(r.artifact || r.id)+' · '+statusOf(r.patch_status)+' · '+(r.reason || 'No assessment reason recorded'));
     if(i===15) records=array(h.gaps);
     return {i,records,target:i>=13?'Control node / AAP execution environment; inventory scope: '+h.host:h.host+' · '+(h.address || 'Address not recorded')};

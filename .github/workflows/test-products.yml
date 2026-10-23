@@ -1,0 +1,90 @@
+name: Test product integrations
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - playbooks/tasks/product*.yml
+      - playbooks/discover.yml
+      - tests/products*.yml
+      - tests/export-product-probes.yml
+      - .github/workflows/test-products.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Ansible
+        run: pip install 'ansible-core>=2.19,<2.20'
+      - name: Exercise all file signatures and false-positive guards
+        run: ansible-playbook tests/products.yml
+      - name: Render production Windows probes
+        run: ansible-playbook tests/export-product-probes.yml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: product-probes
+          path: /tmp/phpdetect-product-probes
+          retention-days: 1
+  windows:
+    needs: linux
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: product-probes
+          path: probes
+      - name: Exercise the actual collector on Windows PowerShell
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = 'C:\phpdetect-products'
+          $data = Get-Content probes/fixtures.json -Raw | ConvertFrom-Json
+          try {
+            foreach ($f in $data.fixtures) {
+              $base = Join-Path $root $f.directory
+              $marker = Join-Path $base $f.marker
+              $companion = Join-Path $base $f.companion
+              New-Item -ItemType Directory -Force (Split-Path $marker), (Split-Path $companion) | Out-Null
+              Set-Content -LiteralPath $marker -Value $f.content
+              Set-Content -LiteralPath $companion -Value '<?php throw new Exception("must not execute");'
+            }
+            foreach ($signature in $data.signatures) {
+              $result = & ".\probes\$($signature.id).ps1" | ConvertFrom-Json
+              if (@($result.findings).Count -ne 1) { throw "Unexpected matches: $($signature.name)" }
+              if (@($result.gaps).Count -ne 0) { throw "Unexpected visibility gap: $($signature.name)" }
+              $expected = $data.fixtures | Where-Object { $_.expected -eq $signature.name }
+              if ($result.findings[0].location -ne (Join-Path $root $expected.directory)) { throw 'Incorrect installation path' }
+              if ($result.findings[0].version -notmatch '^\d+\.\d+') { throw 'Missing product version' }
+            }
+            Remove-Item -LiteralPath (Join-Path $root "WordPress site's `$(literal)\wp-settings.php")
+            $repeat = & .\probes\wordpress.ps1 | ConvertFrom-Json
+            if (@($repeat.findings).Count -ne 0) { throw 'Single-marker false positive' }
+          } finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+          }
+  containers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [podman, docker]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install tools
+        run: |
+          pip install 'ansible-core>=2.19,<2.20'
+          if [ '${{ matrix.engine }}' = podman ]; then sudo apt-get update && sudo apt-get install -y podman; fi
+      - name: Exercise read-only isolated container product discovery
+        run: ansible-playbook tests/products-container.yml -e product_test_engine=${{ matrix.engine }}

@@ -1,0 +1,36 @@
+---
+- name: Initialize runtime associations without inferring a serving build
+  ansible.builtin.set_fact:
+    product_runtime_links: []
+
+- name: Link explicitly mapped document roots to their runtime evidence
+  ansible.builtin.set_fact:
+    product_runtime_links: >-
+      {{ product_runtime_links + [{'runtime_id': item.id, 'artifact': item.artifact | default(''),
+      'basis': 'operator_configured_document_root', 'serving_build_verified': false}] }}
+  loop: '{{ phpdetect_runtimes | default([]) }}'
+  when:
+    - detected_product.container_id == ''
+    - detected_product.location in item.document_roots | default([])
+    - item.id in (assessment_report.runtimes | default([]) | map(attribute='id') | list)
+
+- name: Link container CLI evidence without claiming web-serving identity
+  ansible.builtin.set_fact:
+    product_runtime_links: >-
+      {{ product_runtime_links + [{'container_id': item.container_id, 'engine': item.engine,
+      'php_cli_version': item.php_cli_version, 'basis': 'same_container_cli_evidence', 'serving_build_verified': false}] }}
+  loop: '{{ assessment_report.container_cli_evidence | default([]) }}'
+  when: detected_product.container_id != '' and item.container_id == detected_product.container_id and item.engine == detected_product.engine
+
+- name: Record file evidence and matching NCSC product rows
+  ansible.builtin.set_fact:
+    product_matches: >-
+      {{ product_matches + [{'product': {'name': detected_product.name, 'version': detected_product.version, 'ncsc_term': detected_product.ncsc_term},
+      'identity_status': 'file_signature_match', 'check': detected_product.check,
+      'location': detected_product.location, 'container_id': detected_product.container_id, 'engine': detected_product.engine,
+      'evidence_files': [detected_product.location ~ '/' ~ detected_product.marker, detected_product.location ~ '/' ~ detected_product.companion],
+      'runtime_links': product_runtime_links, 'runtime_mapping_status': 'associated_not_verified' if product_runtime_links | length > 0 else 'unknown',
+      'patch_status': 'unknown', 'ncsc_commit': hostvars.localhost.ncsc_snapshot.commit_sha,
+      'ncsc_matches': ((hostvars.localhost.ncsc_snapshot.pages | map(attribute='content') | join('\n')).splitlines()
+      | select('match', '(?i)^\|[^|]*\|[^|]*\b' ~ (detected_product.ncsc_term | regex_escape) ~ '\b') | list),
+      'reason': 'Product files identify an installation candidate, not an active website. NCSC rows are advisory leads; exact runtime, vendor patch and loaded-build verification remain required.'}] }}

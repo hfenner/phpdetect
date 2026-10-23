@@ -63,14 +63,11 @@
         apply:
           no_log: true
       when: ansible_shell_type | default('sh') == 'powershell'
-    - name: Build product candidate matches without treating matches as clearance
-      ansible.builtin.set_fact:
-        product_matches: >-
-          {{ product_matches | default([]) + [{"product": item, "patch_status": "unknown",
-          "ncsc_matches": ((hostvars.localhost.ncsc_snapshot.pages
-          | selectattr("content", "defined") | map(attribute="content") | join("\n")).splitlines()
-          | select("search", item.ncsc_term | regex_escape) | list)}] }}
-      loop: '{{ phpdetect_products | default([]) }}'
+    - name: Discover products and attach NCSC advisory references
+      ansible.builtin.include_tasks:
+        file: tasks/products.yml
+        apply:
+          no_log: true
     - name: Save the host assessment on the controller
       ansible.builtin.copy:
         dest: '{{ hostvars.localhost.phpdetect_run.path }}/{{ inventory_hostname | hash("sha256") }}.json'

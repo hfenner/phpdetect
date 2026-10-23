@@ -1,0 +1,13 @@
+---
+- name: Retain product identity with its exact container context
+  ansible.builtin.set_fact:
+    product_candidates: >-
+      {{ product_candidates + [dict(product_signature, location=item.split('CQ==' | b64decode)[0], version=item.split('CQ==' | b64decode)[1],
+      check='Container product file signatures', container_id=product_container_scan.item.id, engine=product_container_scan.item.engine)] }}
+  loop: '{{ product_container_scan.stdout_lines | default([]) }}'
+  when: item is match('^[^\t]+\t[0-9]+[.][0-9]+([.][0-9]+)?$')
+
+- name: Record failed or partial container product inspection
+  ansible.builtin.set_fact:
+    product_gaps: '{{ product_gaps + ["Container product probe incomplete: " ~ product_container_scan.item.id ~ " / " ~ product_signature.name] }}'
+  when: product_container_scan.rc | default(1) != 0 or product_container_scan.stderr | default('') | length > 0

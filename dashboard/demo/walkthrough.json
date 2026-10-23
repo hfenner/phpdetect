@@ -43,34 +43,34 @@
         "line": 60
       },
       {
-        "name": "Build product candidate matches without treating matches as clearance",
-        "description": "For each inventory-supplied phpdetect_products entry, searches NCSC snapshot lines for its escaped ncsc_term. Matches remain unknown and do not prove product installation or patch status.",
+        "name": "Discover products and attach NCSC advisory references",
+        "description": "Runs eight paired-file product integrations on Linux or Windows, optionally inside running containers; attaches NCSC product-row matches and conservative runtime associations. Product patch status stays unknown.",
         "line": 66
       },
       {
         "name": "Save the host assessment on the controller",
         "description": "Combines the assessment with inventory host name, connection address and product matches. Writes it back to the control node with owner-only permissions, replacing that host\u2019s placeholder.",
-        "line": 74
+        "line": 71
       },
       {
         "name": "Assemble all host results including unreachable seeds",
         "description": "Reads the saved result for every scoped host, including any unknown placeholders left by failed or unreachable collection. Final assembly must itself run for a consolidated report to be produced.",
-        "line": 87
+        "line": 84
       },
       {
         "name": "Write the consolidated assessment",
         "description": "Writes summary.json with host assessments, NCSC revision/date and counts of affected and unknown hosts. Affected runtime evidence can flag a host; a patched subset does not clear a host.",
-        "line": 93
+        "line": 90
       },
       {
         "name": "Preserve discovery evidence in AAP job artifacts",
         "description": "When enabled, publishes the assembled hosts and NCSC commit using set_stats so AAP retains them after the execution environment exits. Complete means report assembly completed, not that every host was fully inspected.",
-        "line": 107
+        "line": 104
       },
       {
         "name": "Show private output directory",
         "description": "Prints the private report directory and reminds the operator that unknown findings need follow-up. A separate deployment process publishes a chosen report to the dashboard; discovery does not update the public page automatically.",
-        "line": 118
+        "line": 115
       }
     ]
   },
@@ -336,6 +336,131 @@
         "name": "Preserve the Windows assessment in the common report schema",
         "description": "Parses the PowerShell JSON into the common assessment schema so Windows hosts can be reported alongside Linux and container evidence.",
         "line": 36
+      }
+    ]
+  },
+  "products.yml": {
+    "path": "playbooks/tasks/products.yml",
+    "tasks": [
+      {
+        "name": "Initialize automatic product evidence and supported signatures",
+        "description": "Resets product findings and defines the eight supported paired-file signatures, version keys and Nextcloud vendor discriminator.",
+        "line": 2
+      },
+      {
+        "name": "Validate bounded product discovery inputs",
+        "description": "Requires root lists and a search depth between one and ten before any product probe runs.",
+        "line": 19
+      },
+      {
+        "name": "Inspect each supported product signature without executing application files",
+        "description": "Runs the included file collector for each supported product. It reads public version markers; it never executes the application.",
+        "line": 29
+      },
+      {
+        "name": "Record product collection scope and container limitations",
+        "description": "Records bounded depth, symlink and permission limitations, optional probe state and unassessed stopped containers.",
+        "line": 36
+      },
+      {
+        "name": "Attach NCSC references and runtime associations to discovered products",
+        "description": "Deduplicates installation candidates and processes each through the association and advisory tasks.",
+        "line": 44
+      },
+      {
+        "name": "Preserve explicitly declared products as operator supplied evidence",
+        "description": "Retains legacy inventory declarations with an explicit operator_supplied label, separate from automatic file evidence.",
+        "line": 51
+      },
+      {
+        "name": "Add product coverage limitations to the host assessment",
+        "description": "Appends product coverage gaps to the host report. Missing findings never clear the host.",
+        "line": 60
+      }
+    ]
+  },
+  "product-files.yml": {
+    "path": "playbooks/tasks/product-files.yml",
+    "tasks": [
+      {
+        "name": "Define the inline read-only product file probe",
+        "description": "Defines a shell probe inline: find the version marker within a bounded root, require a companion file, read at most 256 KiB, and emit installation path plus numeric version evidence.",
+        "line": 2
+      },
+      {
+        "name": "Inspect Linux web roots for the product signature",
+        "description": "Runs the inline shell probe with roots and signatures passed as literal arguments. Captures failures and stderr as coverage gaps.",
+        "line": 26
+      },
+      {
+        "name": "Retain Linux product signature findings",
+        "description": "Converts tab-delimited path/version records into product candidates labeled with the Linux file-signature check.",
+        "line": 38
+      },
+      {
+        "name": "Inspect Windows web roots and IIS physical paths for the product signature",
+        "description": "Traverses configured and IIS roots with bounded PowerShell traversal, skips reparse-point directories, and requires paired files and a version marker.",
+        "line": 46
+      },
+      {
+        "name": "Retain Windows product signature findings",
+        "description": "Normalizes successful PowerShell JSON findings into the shared product schema.",
+        "line": 93
+      },
+      {
+        "name": "Inspect product files in running containers when explicitly enabled",
+        "description": "Executes the same read-only shell probe in running containers through the recorded Podman or Docker engine. It does not execute PHP.",
+        "line": 100
+      },
+      {
+        "name": "Normalize each container product probe",
+        "description": "Includes the container normalizer for each attempted probe, retaining its exact engine and container identity.",
+        "line": 113
+      },
+      {
+        "name": "Record product file probe errors as incomplete coverage",
+        "description": "Adds generic Linux or Windows error evidence without exposing full stderr or file contents in reports.",
+        "line": 121
+      }
+    ]
+  },
+  "product-container.yml": {
+    "path": "playbooks/tasks/product-container.yml",
+    "tasks": [
+      {
+        "name": "Retain product identity with its exact container context",
+        "description": "Records product path and version alongside the container ID and engine, so identical paths in different containers stay distinct.",
+        "line": 2
+      },
+      {
+        "name": "Record failed or partial container product inspection",
+        "description": "Records missing tools, permission problems or failed commands as incomplete container coverage.",
+        "line": 10
+      }
+    ]
+  },
+  "product-match.yml": {
+    "path": "playbooks/tasks/product-match.yml",
+    "tasks": [
+      {
+        "name": "Initialize runtime associations without inferring a serving build",
+        "description": "Starts each product with no runtime links. A product match alone does not identify its serving PHP build.",
+        "line": 2
+      },
+      {
+        "name": "Link explicitly mapped document roots to their runtime evidence",
+        "description": "Associates exact inventory document_roots with runtime IDs actually present in the assessment, labeled as operator-configured and unverified.",
+        "line": 6
+      },
+      {
+        "name": "Link container CLI evidence without claiming web-serving identity",
+        "description": "Associates PHP CLI evidence only when both container ID and engine match. This is shared container context, not a serving-process verification.",
+        "line": 17
+      },
+      {
+        "name": "Record file evidence and matching NCSC product rows",
+        "description": "Stores identifying files and associations, then searches the NCSC product column for the product term. Notes-only mentions are excluded; all product patch statuses remain unknown.",
+        "line": 25
       }
     ]
   }

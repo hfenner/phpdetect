@@ -1,0 +1,35 @@
+---
+- name: Render the actual inline Windows probes for Windows CI execution
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    product_task_definitions: '{{ lookup("file", "../playbooks/tasks/product-files.yml") | from_yaml }}'
+    product_catalog: '{{ (lookup("file", "../playbooks/tasks/products.yml") | from_yaml)[0]["ansible.builtin.set_fact"].product_signatures }}'
+    product_fixtures: '{{ (lookup("file", "products.yml") | from_yaml)[0].tasks[1].block[0]["ansible.builtin.set_fact"].fixtures }}'
+    phpdetect_product_roots: ['C:\phpdetect-products']
+    phpdetect_product_depth: 6
+  tasks:
+    - name: Create the temporary CI export directory
+      ansible.builtin.file:
+        path: /tmp/phpdetect-product-probes
+        state: directory
+        mode: '0700'
+    - name: Copy the raw production PowerShell as a temporary template
+      ansible.builtin.copy:
+        dest: /tmp/phpdetect-product-probes/probe.ps1.j2
+        content: '{{ (product_task_definitions | selectattr("name", "equalto", "Inspect Windows web roots and IIS physical paths for the product signature") | first)["ansible.builtin.raw"] }}'
+        mode: '0600'
+    - name: Render each real probe with isolated test roots
+      ansible.builtin.template:
+        src: /tmp/phpdetect-product-probes/probe.ps1.j2
+        dest: '/tmp/phpdetect-product-probes/{{ product_signature.id }}.ps1'
+        mode: '0600'
+      loop: '{{ product_catalog }}'
+      loop_control:
+        loop_var: product_signature
+    - name: Export synthetic fixtures and expected identities
+      ansible.builtin.copy:
+        dest: /tmp/phpdetect-product-probes/fixtures.json
+        content: '{{ {"signatures": product_catalog, "fixtures": product_fixtures} | to_nice_json }}'
+        mode: '0600'

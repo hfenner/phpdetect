@@ -1,0 +1,129 @@
+---
+- name: Define the inline read-only product file probe
+  ansible.builtin.set_fact:
+    product_file_probe: |
+      marker=$1; companion=$2; version_key=$3; depth=$4; identity_token=$5
+      shift 5
+      for root do
+        case "$root" in /*) ;; *) printf 'Product root must be absolute\n' >&2; exit 2;; esac
+        [ -e "$root" ] || continue
+        find "$root" -maxdepth "$depth" -type f -name "${marker##*/}" -print |
+        while IFS= read -r file; do
+          case "$file" in *[[:cntrl:]]*) continue;; esac
+          case "$file" in */"$marker") base=${file%/"$marker"};; *) continue;; esac
+          [ -f "$base/$companion" ] || continue
+          [ -r "$file" ] && [ -r "$base/$companion" ] || { printf 'Unreadable product signature\n' >&2; continue; }
+          # Read only a bounded public version file; never source/include PHP or read site credentials.
+          if [ -n "$identity_token" ]; then
+            head -c 262144 "$file" | grep -F "$identity_token" >/dev/null || continue
+          fi
+          version=$(head -c 262144 "$file" | grep -F "$version_key" | sed -nE 's/^[^0-9]*([0-9]+\.[0-9]+(\.[0-9]+)?).*/\1/p' | head -n 1)
+          [ -n "$version" ] || continue
+          printf '%s\t%s\n' "$base" "$version"
+        done
+      done
+
+- name: Inspect Linux web roots for the product signature
+  ansible.builtin.command:
+    argv: >-
+      {{ ['sh', '-c', product_file_probe, 'phpdetect-product', product_signature.marker,
+      product_signature.companion, product_signature.version_key, phpdetect_product_depth | default(6) | string, product_signature.identity_token | default('')]
+      + (phpdetect_product_roots | default(['/var/www', '/srv/www', '/usr/share/webapps', '/usr/share/zabbix', '/usr/share/glpi', '/opt'])) }}
+  register: product_linux_scan
+  when: assessment_report.platform == 'Linux'
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Retain Linux product signature findings
+  ansible.builtin.set_fact:
+    product_candidates: >-
+      {{ product_candidates + [dict(product_signature, location=item.split('CQ==' | b64decode)[0], version=item.split('CQ==' | b64decode)[1],
+      check='Linux product file signatures', container_id='', engine='')] }}
+  loop: '{{ product_linux_scan.stdout_lines | default([]) }}'
+  when: item is match('^[^\t]+\t[0-9]+[.][0-9]+([.][0-9]+)?$')
+
+- name: Inspect Windows web roots and IIS physical paths for the product signature
+  ansible.builtin.raw: |
+    $ErrorActionPreference = 'Stop'
+    $signature = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{{ product_signature | to_json | b64encode }}')) | ConvertFrom-Json
+    $roots = @([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{{ phpdetect_product_roots | default(["C:\\inetpub\\wwwroot", "C:\\xampp\\htdocs"]) | to_json | b64encode }}')) | ConvertFrom-Json)
+    $gaps = [System.Collections.Generic.List[string]]::new()
+    if (Get-Module -ListAvailable WebAdministration) {
+      try { Import-Module WebAdministration; $roots += @(Get-Website | ForEach-Object { [Environment]::ExpandEnvironmentVariables($_.PhysicalPath) }) }
+      catch { $gaps.Add('IIS site roots inaccessible') }
+    }
+    $found = @()
+    foreach ($root in ($roots | Sort-Object -Unique)) {
+      if (-not [IO.Path]::IsPathRooted($root)) { throw 'Product root must be absolute' }
+      if (-not (Test-Path -LiteralPath $root)) { continue }
+      # Traverse explicitly to avoid following junctions/reparse points on Windows PowerShell 5.1.
+      $queue = [System.Collections.Generic.Queue[object]]::new()
+      $queue.Enqueue(@{path=$root;depth=0})
+      while ($queue.Count -gt 0) {
+        $dir = $queue.Dequeue()
+        try {
+          if ((Get-Item -LiteralPath $dir.path).Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+          $marker = Join-Path $dir.path $signature.marker
+          $companion = Join-Path $dir.path $signature.companion
+          if ((Test-Path -LiteralPath $marker -PathType Leaf) -and (Test-Path -LiteralPath $companion -PathType Leaf)) {
+            $f = Get-Item -LiteralPath $marker
+            if ($f.Length -le 262144) {
+              $content = Get-Content -LiteralPath $marker
+              if ($signature.identity_token -and -not ($content | Select-String -SimpleMatch $signature.identity_token)) { continue }
+              $line = $content | Where-Object { $_.Contains($signature.version_key) -and $_ -match '[0-9]+\.[0-9]+' } | Select-Object -First 1
+              if ($line -match '^[^0-9]*([0-9]+\.[0-9]+(?:\.[0-9]+)?)') {
+                $found += @{location=$dir.path;version=$Matches[1]}
+              }
+            }
+          }
+          if ($dir.depth -lt {{ phpdetect_product_depth | default(6) | int }}) {
+            Get-ChildItem -LiteralPath $dir.path -Directory -Force | ForEach-Object { $queue.Enqueue(@{path=$_.FullName;depth=$dir.depth+1}) }
+          }
+        } catch { $gaps.Add('A product directory or signature could not be read') }
+      }
+    }
+    @{findings=@($found);gaps=@($gaps.ToArray())} | ConvertTo-Json -Depth 5 -Compress
+  register: product_windows_scan
+  when: assessment_report.platform == 'Windows'
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Retain Windows product signature findings
+  ansible.builtin.set_fact:
+    product_candidates: >-
+      {{ product_candidates + [dict(product_signature, location=item.location, version=item.version,
+      check='Windows product file signatures', container_id='', engine='')] }}
+  loop: '{{ (product_windows_scan.stdout | trim | from_json).findings if product_windows_scan.rc | default(1) == 0 else [] }}'
+
+- name: Inspect product files in running containers when explicitly enabled
+  ansible.builtin.command:
+    argv: >-
+      {{ [item.engine, 'exec', item.id, 'sh', '-c', product_file_probe, 'phpdetect-product', product_signature.marker,
+      product_signature.companion, product_signature.version_key, phpdetect_product_depth | default(6) | string, product_signature.identity_token | default('')]
+      + (phpdetect_product_container_roots | default(['/var/www', '/usr/share/nginx/html', '/app', '/opt'])) }}
+  loop: '{{ assessment_report.containers | default([]) }}'
+  when: item.running and phpdetect_product_container_probe | default(false) | bool
+  register: product_container_scans
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Normalize each container product probe
+  ansible.builtin.include_tasks: product-container.yml
+  loop: '{{ product_container_scans.results | default([]) }}'
+  loop_control:
+    loop_var: product_container_scan
+    label: '{{ product_container_scan.item.id }}'
+  when: not product_container_scan.skipped | default(false)
+
+- name: Record product file probe errors as incomplete coverage
+  ansible.builtin.set_fact:
+    product_gaps: >-
+      {{ product_gaps
+      + (['Linux product probe incomplete for ' ~ product_signature.name]
+      if assessment_report.platform == 'Linux' and (product_linux_scan.rc | default(1) != 0 or product_linux_scan.stderr | default('') | length > 0) else [])
+      + (['Windows product probe failed for ' ~ product_signature.name]
+      if assessment_report.platform == 'Windows' and product_windows_scan.rc | default(1) != 0 else [])
+      + ((product_windows_scan.stdout | trim | from_json).gaps if product_windows_scan.rc | default(1) == 0 else []) }}

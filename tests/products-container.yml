@@ -1,0 +1,92 @@
+---
+- name: Test product inspection inside an isolated container
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Allocate a disposable web root
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: phpdetect-container-product-
+      register: container_product_dir
+    - name: Exercise the container probe and always clean up
+      block:
+        - name: Create a WordPress signature directory
+          ansible.builtin.file:
+            path: '{{ container_product_dir.path }}/wp-includes'
+            state: directory
+            mode: '0755'
+        - name: Write a public version marker
+          ansible.builtin.copy:
+            dest: '{{ container_product_dir.path }}/wp-includes/version.php'
+            content: "$wp_version = '6.8.1';"
+            mode: '0644'
+        - name: Write the companion marker
+          ansible.builtin.copy:
+            dest: '{{ container_product_dir.path }}/wp-settings.php'
+            content: '<?php throw new Exception("do not execute");'
+            mode: '0644'
+        - name: Start a network-isolated read-only PHP container with test files
+          ansible.builtin.command:
+            argv:
+              - '{{ product_test_engine }}'
+              - run
+              - '-d'
+              - '--network=none'
+              - '--read-only'
+              - '--cap-drop=ALL'
+              - '--security-opt=no-new-privileges'
+              - '--pids-limit=64'
+              - '--memory=256m'
+              - '-v'
+              - '{{ container_product_dir.path }}:/fixtures:ro'
+              - docker.io/library/php@sha256:a0b75cee7023ba2c127138dcad2ecc6ec7e09435534645e70450f29f24ea2a5a
+              - sleep
+              - '600'
+          register: product_test_container
+          changed_when: true
+        - name: Read real container PHP evidence
+          ansible.builtin.command:
+            argv: ['{{ product_test_engine }}', exec, '{{ product_test_container.stdout }}', php, '-n', '-v']
+          register: product_test_php
+          changed_when: false
+        - name: Supply the isolated container context
+          ansible.builtin.set_fact:
+            phpdetect_product_roots: []
+            phpdetect_product_container_roots: [/fixtures]
+            phpdetect_product_container_probe: true
+            assessment_report:
+              platform: Linux
+              gaps: []
+              containers: [{id: '{{ product_test_container.stdout }}', engine: '{{ product_test_engine }}', running: true}]
+              container_cli_evidence:
+                - container_id: '{{ product_test_container.stdout }}'
+                  engine: '{{ product_test_engine }}'
+                  php_cli_version: '{{ product_test_php.stdout_lines[0] }}'
+            ncsc_snapshot:
+              commit_sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+              pages: [{content: '|WordPress project|WordPress||Vulnerable|Vulnerable|Conditional runtime scope|link|'}]
+        - name: Run production product discovery inside the container
+          ansible.builtin.include_tasks: ../playbooks/tasks/products.yml
+        - name: Verify identity and context without promoting patch status
+          ansible.builtin.assert:
+            that:
+              - product_matches | length == 1
+              - product_matches[0].product.name == 'WordPress'
+              - product_matches[0].check == 'Container product file signatures'
+              - product_matches[0].location == '/fixtures'
+              - product_matches[0].container_id == product_test_container.stdout
+              - product_matches[0].engine == product_test_engine
+              - product_matches[0].runtime_links[0].basis == 'same_container_cli_evidence'
+              - not product_matches[0].runtime_links[0].serving_build_verified
+              - product_matches[0].patch_status == 'unknown'
+      always:
+        - name: Remove the disposable test container
+          ansible.builtin.command:
+            argv: ['{{ product_test_engine }}', rm, '-f', '{{ product_test_container.stdout }}']
+          when: product_test_container.stdout | default('') | length > 0
+          changed_when: true
+        - name: Remove the disposable web root
+          ansible.builtin.file:
+            path: '{{ container_product_dir.path }}'
+            state: absent

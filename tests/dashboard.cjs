@@ -55,3 +55,10 @@ assert.match(podman.command,/podman exec 'xyz' php -n -v/);
 const legacyDocker=manualFinding({host:'linux'},'/php','Docker alternative inventory + PHP CLI probe','xyz','docker');
 assert.match(legacyDocker.command,/docker exec 'xyz' php -n -v/);
 assert.match(manualChecks[7][1],/engine=podman/);
+
+const productHost={host:'products',platform:'Windows',products:[{identity_status:'file_signature_match',product:{name:'WordPress',version:'6.8.1'},location:'C:\\inetpub\\wwwroot',check:'Windows product file signatures',evidence_files:['wp-includes/version.php','wp-settings.php'],patch_status:'patched'}]};
+const productFinding=detectionFindings([productHost])[0];
+assert.match(productFinding.detail,/PHP patch status: unknown/);
+assert.match(productFinding.manual.command,/ansible-playbook/);
+assert.match(productFinding.detail,/not a separate PHP runtime/);
+assert.equal(normalize({hosts:[productHost]}).rows.length,1,'Product identity must not inflate PHP runtime counts');

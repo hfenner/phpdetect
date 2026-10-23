@@ -3,6 +3,8 @@ phpdetect_become: true
 phpdetect_runtimes:
   - id: storefront-fpm
     kind: package
+    # Exact installation roots; this is an operator assertion, not verified serving identity.
+    document_roots: [/var/www/storefront]
     sites: [https://store.example.invalid]
     exposure: internet
     artifact: /usr/sbin/php-fpm8.3

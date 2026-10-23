@@ -1,0 +1,93 @@
+---
+- name: Exercise actual product probes against isolated application file fixtures
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Allocate disposable product fixtures
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: phpdetect-products-
+      register: product_test_dir
+    - name: Exercise discovery and always remove the fixtures
+      block:
+        - name: Define isolated signatures and assessment context
+          ansible.builtin.set_fact:
+            fixtures:
+              - {directory: "WordPress site's $(literal)", marker: wp-includes/version.php, companion: wp-settings.php, content: "$wp_version = '6.8.1';", expected: WordPress}
+              - {directory: drupal, marker: core/lib/Drupal.php, companion: core/modules/system/system.info.yml, content: "const VERSION = '11.1.0';", expected: Drupal}
+              - {directory: joomla, marker: administrator/manifests/files/joomla.xml, companion: includes/defines.php, content: '<version>6.0.1</version>', expected: Joomla}
+              - {directory: nextcloud, marker: version.php, companion: occ, content: "$OC_VersionString = '32.0.1'; $vendor = 'nextcloud';", expected: Nextcloud Server}
+              - {directory: moodle, marker: version.php, companion: lib/moodlelib.php, content: "$release = '5.1.0 (Build: 20251020)';", expected: Moodle}
+              - {directory: mediawiki, marker: includes/Defines.php, companion: maintenance/run.php, content: "define('MW_VERSION', '1.44.0');", expected: MediaWiki}
+              - {directory: glpi, marker: inc/define.php, companion: front/central.php, content: "define('GLPI_VERSION', '10.0.28');", expected: GLPI}
+              - {directory: zabbix, marker: include/defines.inc.php, companion: zabbix.php, content: "define('ZABBIX_VERSION', '7.4.0');", expected: Zabbix web frontend}
+              - {directory: owncloud-lookalike, marker: version.php, companion: occ, content: "$OC_VersionString = '10.0.0'; $vendor = 'owncloud';", expected: absent}
+            phpdetect_product_roots: ['{{ product_test_dir.path }}']
+            assessment_report:
+              platform: Linux
+              runtimes: [{id: mapped-wordpress, artifact: /usr/sbin/php-fpm}]
+              gaps: []
+            phpdetect_runtimes:
+              - id: mapped-wordpress
+                artifact: /usr/sbin/php-fpm
+                document_roots: ["{{ product_test_dir.path }}/WordPress site's $(literal)"]
+            ncsc_snapshot:
+              commit_sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+              pages:
+                - content: |
+                    |WordPress project|WordPress||Vulnerable|Vulnerable|Conditional runtime scope|link|
+                    |Other supplier|Other product||Investigation|Investigation|WordPress is mentioned in notes only|link|
+        - name: Create marker parent directories
+          ansible.builtin.file:
+            path: '{{ product_test_dir.path }}/{{ item.directory }}/{{ item.marker | dirname }}'
+            state: directory
+            mode: '0700'
+          loop: '{{ fixtures }}'
+        - name: Create companion parent directories
+          ansible.builtin.file:
+            path: '{{ product_test_dir.path }}/{{ item.directory }}/{{ item.companion | dirname }}'
+            state: directory
+            mode: '0700'
+          loop: '{{ fixtures }}'
+        - name: Write public version markers
+          ansible.builtin.copy:
+            dest: '{{ product_test_dir.path }}/{{ item.directory }}/{{ item.marker }}'
+            content: '{{ item.content }}'
+            mode: '0600'
+          loop: '{{ fixtures }}'
+        - name: Write companion markers that must never execute
+          ansible.builtin.copy:
+            dest: '{{ product_test_dir.path }}/{{ item.directory }}/{{ item.companion }}'
+            content: '<?php throw new Exception("must not execute");'
+            mode: '0600'
+          loop: '{{ fixtures }}'
+        - name: Run the production product integrations
+          ansible.builtin.include_tasks: ../playbooks/tasks/products.yml
+        - name: Require eight identities with conservative patch and mapping results
+          ansible.builtin.assert:
+            that:
+              - product_matches | length == 8
+              - product_matches | map(attribute='product.name') | sort == fixtures | rejectattr('expected', 'equalto', 'absent') | map(attribute='expected') | sort
+              - product_matches | rejectattr('patch_status', 'equalto', 'unknown') | length == 0
+              - product_matches | selectattr('runtime_mapping_status', 'equalto', 'associated_not_verified') | length == 1
+              - product_matches[0].ncsc_matches | length == 1
+              - product_matches[0].runtime_links[0].runtime_id == 'mapped-wordpress'
+              - not product_matches[0].runtime_links[0].serving_build_verified
+              - product_matches[0].product.version == '6.8.1'
+        - name: Remove one required companion to prove single-file matches are rejected
+          ansible.builtin.file:
+            path: "{{ product_test_dir.path }}/WordPress site's $(literal)/wp-settings.php"
+            state: absent
+        - name: Repeat the production discovery to verify reset and missing-marker behavior
+          ansible.builtin.include_tasks: ../playbooks/tasks/products.yml
+        - name: Require no stale WordPress finding after repeat collection
+          ansible.builtin.assert:
+            that:
+              - product_matches | length == 7
+              - product_matches | selectattr('product.name', 'equalto', 'WordPress') | length == 0
+      always:
+        - name: Remove disposable product fixtures
+          ansible.builtin.file:
+            path: '{{ product_test_dir.path }}'
+            state: absent
