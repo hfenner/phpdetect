@@ -64,6 +64,8 @@ Use [Build PHP lab](playbooks/build-lab-aws.yml) and the separate [teardown play
 
 ## Validation
 
+[Gitleaks](https://github.com/hfenner/phpdetect/actions/workflows/gitleaks.yml) scans commits on every pull request and push to `main`; manual dispatch scans repository history. The [official action](https://github.com/gitleaks/gitleaks-action) is pinned to a commit, with scanner version 8.30.1. Findings fail the job, secret values are redacted, and PR comments and report artifact uploads are disabled. To scan all locally available history, run `gitleaks git --redact --log-opts="--all" .` from a full clone.
+
 [Ansible lint](https://github.com/hfenner/phpdetect/actions/workflows/ansible-lint.yml) runs on every pull request, push to `main`, and manual dispatch. It installs the required collections and runs `ansible-lint --offline --strict`; lint findings fail the job. YAML line-length limits are disabled to preserve inline shell, PowerShell, and Jinja expressions. Other lint rules remain enabled.
 
 To reproduce the CI lint check with Python 3.12:
