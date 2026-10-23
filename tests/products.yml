@@ -22,7 +22,7 @@
               - {directory: mediawiki, marker: includes/Defines.php, companion: maintenance/run.php, content: "define('MW_VERSION', '1.44.0');", expected: MediaWiki}
               - {directory: glpi, marker: inc/define.php, companion: front/central.php, content: "define('GLPI_VERSION', '10.0.28');", expected: GLPI}
               - {directory: zabbix, marker: include/defines.inc.php, companion: zabbix.php, content: "define('ZABBIX_VERSION', '7.4.0');", expected: Zabbix web frontend}
-              - {directory: owncloud-lookalike, marker: version.php, companion: occ, content: "$OC_VersionString = '10.0.0'; $vendor = 'owncloud';", expected: absent}
+              - {directory: owncloud-lookalike, marker: version.php, companion: occ, content: "$OC_VersionString = '10.0.0'; $vendor = 'owncloud'; // nextcloud migration compatibility", expected: absent}
             phpdetect_product_roots: ['{{ product_test_dir.path }}']
             assessment_report:
               platform: Linux

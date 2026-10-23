@@ -10,7 +10,7 @@
       - {id: wordpress, name: WordPress, ncsc_term: WordPress, marker: wp-includes/version.php, companion: wp-settings.php, version_key: wp_version}
       - {id: drupal, name: Drupal, ncsc_term: Drupal, marker: core/lib/Drupal.php, companion: core/modules/system/system.info.yml, version_key: VERSION}
       - {id: joomla, name: Joomla, ncsc_term: Joomla, marker: administrator/manifests/files/joomla.xml, companion: includes/defines.php, version_key: '<version>'}
-      - {id: nextcloud, name: Nextcloud Server, ncsc_term: Nextcloud Server, marker: version.php, companion: occ, version_key: OC_VersionString, identity_token: nextcloud}
+      - {id: nextcloud, name: Nextcloud Server, ncsc_term: Nextcloud Server, marker: version.php, companion: occ, version_key: OC_VersionString, identity_token: "$vendor = 'nextcloud';"}
       - {id: moodle, name: Moodle, ncsc_term: Moodle, marker: version.php, companion: lib/moodlelib.php, version_key: release}
       - {id: mediawiki, name: MediaWiki, ncsc_term: MediaWiki, marker: includes/Defines.php, companion: maintenance/run.php, version_key: MW_VERSION}
       - {id: glpi, name: GLPI, ncsc_term: GLPI, marker: inc/define.php, companion: front/central.php, version_key: GLPI_VERSION}
