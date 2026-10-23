@@ -1,0 +1,327 @@
+{
+  "discover.yml": {
+    "path": "playbooks/discover.yml",
+    "tasks": [
+      {
+        "name": "Create a unique controller report directory",
+        "description": "Creates a new temporary directory on the control node or AAP execution environment for this run\u2019s reports. Each run has its own output location.",
+        "line": 6
+      },
+      {
+        "name": "Seed AAP job artifacts before any target connection",
+        "description": "When job-artifact publishing is enabled, records an incomplete assessment before connecting to targets. This initial artifact is unknown, so an interrupted run cannot appear cleared.",
+        "line": 12
+      },
+      {
+        "name": "Load the bundled NCSC snapshot without network requests",
+        "description": "Reads data/ncsc/snapshot.json from the project checkout. Discovery uses this pinned copy and does not download current NCSC data.",
+        "line": 22
+      },
+      {
+        "name": "Validate the bundled snapshot",
+        "description": "Checks the snapshot commit format, nonempty pages, page content and successful stored HTTP statuses. Invalid input stops the play and directs the operator to the separate refresh playbook.",
+        "line": 25
+      },
+      {
+        "name": "Store the source snapshot privately",
+        "description": "Saves the exact NCSC input as ncsc.json with owner-only file permissions, preserving the source used for this run.",
+        "line": 33
+      },
+      {
+        "name": "Seed every scoped host as unknown before connections",
+        "description": "Writes an unknown placeholder for every host in php_targets before connections begin. A host without a completed assessment retains an explicit unassessed record.",
+        "line": 39
+      },
+      {
+        "name": "Collect package, process, runtime, and container evidence",
+        "description": "For targets whose configured shell is not PowerShell, includes the Linux collector below. Passes inventory-defined phpdetect_runtimes as the list of mapped runtimes; collected details are suppressed in normal task logs.",
+        "line": 52
+      },
+      {
+        "name": "Collect native Windows PHP evidence",
+        "description": "For targets configured with a PowerShell shell, includes the Windows collector instead. Branch selection is based on inventory shell configuration, not an automatic Windows connection probe.",
+        "line": 60
+      },
+      {
+        "name": "Build product candidate matches without treating matches as clearance",
+        "description": "For each inventory-supplied phpdetect_products entry, searches NCSC snapshot lines for its escaped ncsc_term. Matches remain unknown and do not prove product installation or patch status.",
+        "line": 66
+      },
+      {
+        "name": "Save the host assessment on the controller",
+        "description": "Combines the assessment with inventory host name, connection address and product matches. Writes it back to the control node with owner-only permissions, replacing that host\u2019s placeholder.",
+        "line": 74
+      },
+      {
+        "name": "Assemble all host results including unreachable seeds",
+        "description": "Reads the saved result for every scoped host, including any unknown placeholders left by failed or unreachable collection. Final assembly must itself run for a consolidated report to be produced.",
+        "line": 87
+      },
+      {
+        "name": "Write the consolidated assessment",
+        "description": "Writes summary.json with host assessments, NCSC revision/date and counts of affected and unknown hosts. Affected runtime evidence can flag a host; a patched subset does not clear a host.",
+        "line": 93
+      },
+      {
+        "name": "Preserve discovery evidence in AAP job artifacts",
+        "description": "When enabled, publishes the assembled hosts and NCSC commit using set_stats so AAP retains them after the execution environment exits. Complete means report assembly completed, not that every host was fully inspected.",
+        "line": 107
+      },
+      {
+        "name": "Show private output directory",
+        "description": "Prints the private report directory and reminds the operator that unknown findings need follow-up. A separate deployment process publishes a chosen report to the dashboard; discovery does not update the public page automatically.",
+        "line": 118
+      }
+    ]
+  },
+  "collect.yml": {
+    "path": "playbooks/tasks/collect.yml",
+    "tasks": [
+      {
+        "name": "Initialize conservative collection state",
+        "description": "Initializes empty collections and conservative defaults before gathering evidence. No runtime starts with an assumed patched status.",
+        "line": 2
+      },
+      {
+        "name": "Read operating system without changing the host",
+        "description": "Runs uname -s to identify the target kernel family without collecting broad Ansible facts.",
+        "line": 15
+      },
+      {
+        "name": "Collect Linux evidence",
+        "description": "Runs the following block only when uname reports Linux. Other non-Windows platforms do not receive Linux package or process assessment.",
+        "line": 23
+      },
+      {
+        "name": "Read distribution release",
+        "description": "Reads /etc/os-release as data to identify the distribution and release.",
+        "line": 26
+      },
+      {
+        "name": "Parse distribution release",
+        "description": "Parses uppercase release keys into a dictionary used when comparing vendor evidence with the host platform.",
+        "line": 32
+      },
+      {
+        "name": "Read installed Debian package revisions",
+        "description": "Queries dpkg for installed package names, full revisions and installation state. Keeps the complete database for exact ownership and package comparisons.",
+        "line": 37
+      },
+      {
+        "name": "Read installed RPM package revisions when Debian tools are absent",
+        "description": "If the Debian query failed, queries RPM for package name and epoch:version-release.architecture. Vendor release suffixes are retained.",
+        "line": 45
+      },
+      {
+        "name": "Determine package manager evidence",
+        "description": "Sets the detected package-manager family from successful query results; unavailable package evidence remains unknown.",
+        "line": 54
+      },
+      {
+        "name": "Parse the installed package database",
+        "description": "Includes the package parsing tasks below to convert query output into a name-to-exact-version dictionary.",
+        "line": 58
+      },
+      {
+        "name": "Find common PHP installations without executing them",
+        "description": "Searches common executable, selected hosting-panel and Apache-module directories for PHP-named ELF files. Reads file signatures rather than executing candidates.",
+        "line": 61
+      },
+      {
+        "name": "Retain unmapped installation candidates",
+        "description": "Deduplicates and retains candidate paths. These candidates are not automatically promoted to mapped or verified serving runtimes.",
+        "line": 81
+      },
+      {
+        "name": "Read process names without command arguments",
+        "description": "Reads process IDs and command names with ps, without collecting process command-line arguments in the report.",
+        "line": 85
+      },
+      {
+        "name": "Identify PHP executables under a different process root",
+        "description": "Compares process roots to the host root for PHP/FrankenPHP executable paths. A different root is a lead for a container or chroot; inaccessible processes may be skipped by this scan.",
+        "line": 93
+      },
+      {
+        "name": "Keep foreign-root candidates explicitly unknown",
+        "description": "Saves foreign-root PID/path findings as unknown and explicitly asks for separate container or chroot assessment.",
+        "line": 113
+      },
+      {
+        "name": "Inspect Nginx configuration privately",
+        "description": "Runs nginx -T with task output hidden from normal logs to read effective routing configuration.",
+        "line": 120
+      },
+      {
+        "name": "Retain only Nginx routing directives without credential URLs",
+        "description": "Keeps only server_name, fastcgi_pass and proxy_pass hints, excluding lines containing @ to avoid credential-bearing URLs.",
+        "line": 129
+      },
+      {
+        "name": "Read Apache virtual-host mappings privately",
+        "description": "Tries Apache control binaries with -S to collect virtual-host information, with raw task output hidden.",
+        "line": 138
+      },
+      {
+        "name": "Retain successful Apache routing hints",
+        "description": "Adds only successful Apache output to the routing hints. These hints are not a verified end-to-end website-to-PHP mapping.",
+        "line": 148
+      },
+      {
+        "name": "Assess each explicitly mapped runtime",
+        "description": "For each explicitly configured runtime, includes the ownership, live-file and classification tasks below. Unmapped candidates do not receive this assessment.",
+        "line": 155
+      },
+      {
+        "name": "Enumerate Docker containers",
+        "description": "Lists all Docker container IDs, including stopped containers. Missing Docker access leaves container coverage unknown.",
+        "line": 162
+      },
+      {
+        "name": "Inspect container identity without logging full configuration",
+        "description": "Inspects each container with full task output hidden so sensitive configuration is not printed in the job log.",
+        "line": 170
+      },
+      {
+        "name": "Keep only container identity and running state",
+        "description": "Retains only container ID/name, image ID/reference and running state. Every container starts and remains unknown in this collector.",
+        "line": 180
+      },
+      {
+        "name": "Read container CLI PHP version as supporting evidence only",
+        "description": "Only when the optional probe is enabled and a container is running, executes php -n -v inside it. This is CLI evidence, not verification of the serving process.",
+        "line": 192
+      },
+      {
+        "name": "Record incomplete Linux discovery coverage",
+        "description": "Records missing package access, unavailable Docker, failed container inspections and mapped-runtime process visibility gaps.",
+        "line": 202
+      },
+      {
+        "name": "Retain version-only evidence linked to each running container",
+        "description": "Associates successful PHP CLI version lines with their container IDs. A CLI version never changes the container\u2019s unknown patch status.",
+        "line": 212
+      },
+      {
+        "name": "Assemble the host report without inferring complete coverage",
+        "description": "Builds the host report with package, runtime, candidate, routing, process and container evidence. Host status is affected if a mapped runtime is affected; otherwise it remains unknown. Unsupported platforms get an explicit coverage gap.",
+        "line": 221
+      }
+    ]
+  },
+  "parse-packages.yml": {
+    "path": "playbooks/tasks/parse-packages.yml",
+    "tasks": [
+      {
+        "name": "Parse installed Debian package records in one operation",
+        "description": "For Debian systems, filters package records to installed entries and creates a dictionary of package names and exact versions.",
+        "line": 2
+      },
+      {
+        "name": "Parse installed RPM package records",
+        "description": "For RPM systems, turns query records into the same package dictionary format, preserving epoch, release and architecture.",
+        "line": 10
+      }
+    ]
+  },
+  "assess-runtime.yml": {
+    "path": "playbooks/tasks/assess-runtime.yml",
+    "tasks": [
+      {
+        "name": "Initialize runtime evidence",
+        "description": "Loads the mapped runtime\u2019s supplied vendor evidence and resets package-owner, process and visibility-gap state for that runtime.",
+        "line": 2
+      },
+      {
+        "name": "Resolve the mapped artifact",
+        "description": "Resolves the configured artifact path with readlink -f so ownership and process checks refer to its canonical path.",
+        "line": 10
+      },
+      {
+        "name": "Read the Debian owner of the mapped artifact",
+        "description": "On Debian systems, asks dpkg-query which package owns the resolved artifact.",
+        "line": 18
+      },
+      {
+        "name": "Read the RPM owner of the mapped artifact",
+        "description": "On RPM systems, asks rpm which package owns the resolved artifact.",
+        "line": 27
+      },
+      {
+        "name": "Record the owning package",
+        "description": "Stores a successfully determined owner. Missing ownership evidence prevents vendor build confirmation.",
+        "line": 36
+      },
+      {
+        "name": "Compare every vendor-approved package revision",
+        "description": "Compares every package revision listed in the supplied evidence with the exact installed revision. An empty or mismatched evidence set cannot establish a vendor-confirmed result.",
+        "line": 42
+      },
+      {
+        "name": "Inspect all live instances and their file mappings without changing them",
+        "description": "As root, scans host-root processes for the mapped executable or module. Compares executable and loaded-file device/inode identities against disk, detects stale/deleted files and records visibility failures. PID|true is current file identity, not proof of a patch.",
+        "line": 47
+      },
+      {
+        "name": "Parse process evidence",
+        "description": "Converts PID|true/false output into structured process records for the classifier.",
+        "line": 113
+      },
+      {
+        "name": "Record process visibility gaps with their cause",
+        "description": "Preserves each gap|PID|cause line so a failure to inspect processes is explained rather than treated as a clean result.",
+        "line": 119
+      },
+      {
+        "name": "Report a failed inspection that produced no gap lines (for example bash missing)",
+        "description": "If the inspection command failed without structured gap lines, records its exit status and error text as a visibility gap.",
+        "line": 124
+      },
+      {
+        "name": "Evaluate vendor and running-build evidence",
+        "description": "Includes the classification tasks below with exact package matching, ownership, OS facts, process evidence and inspection visibility.",
+        "line": 129
+      },
+      {
+        "name": "Append runtime assessment",
+        "description": "Adds the runtime result, reason, sites supplied in inventory, process details and vendor evidence. Internal exposure is P2; internet or unknown exposure is P1. Exposure is inventory-supplied, not externally tested.",
+        "line": 140
+      }
+    ]
+  },
+  "classify.yml": {
+    "path": "playbooks/tasks/classify.yml",
+    "tasks": [
+      {
+        "name": "Check complete vendor evidence for the exact operating system and package owner",
+        "description": "Checks supplied advisory URL/date/channel/CVE fields, exact OS/release, nonempty package revisions and artifact ownership. Separately requires at least one live instance with all current file identities and complete visibility for running-build verification. It does not fetch or authenticate the advisory.",
+        "line": 2
+      },
+      {
+        "name": "Keep incomplete results unknown",
+        "description": "Sets affected only for matching affected vendor evidence. Sets patched only for matching patched vendor evidence plus verified live files. All other combinations remain unknown.",
+        "line": 17
+      },
+      {
+        "name": "Explain every reason a runtime is not cleared",
+        "description": "Explains incomplete vendor evidence, visibility gaps, absent live instances, stale processes or unsupported vendor status. This reason travels with the runtime record.",
+        "line": 24
+      }
+    ]
+  },
+  "collect-windows.yml": {
+    "path": "playbooks/tasks/collect-windows.yml",
+    "tasks": [
+      {
+        "name": "Collect native Windows PHP file, process, and IIS evidence without executing candidate binaries",
+        "description": "Runs one inline PowerShell collector: reads php.exe/php-cgi.exe process paths; searches common PHP directories to depth two; reads executable versions and SHA-256 hashes; gathers IIS website names, paths and bindings; and records OS information and gaps. Candidate binaries are not executed. All Windows patch statuses remain unknown because vendor, serving-site and loaded-build verification are not implemented.",
+        "line": 2
+      },
+      {
+        "name": "Preserve the Windows assessment in the common report schema",
+        "description": "Parses the PowerShell JSON into the common assessment schema so Windows hosts can be reported alongside Linux and container evidence.",
+        "line": 36
+      }
+    ]
+  }
+}
