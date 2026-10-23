@@ -31,10 +31,28 @@ html=html.replace('<main>',`<main><section class="public-repo"><h1>phpdetect on 
  .replace('<footer>',reference+'<footer>')
  .replace('</head>',`<style>.public-repo{margin:24px 0;padding:24px;background:#e0f2e9;border:1px solid #a7cfc1;border-radius:10px}.public-repo h1{font-size:26px}.repo-url{display:inline-block;font-size:22px;font-weight:700;margin:12px 0;overflow-wrap:anywhere}.public-reference{margin:30px 0;background:white;border:1px solid var(--line);border-radius:10px;padding:24px;scroll-margin-top:20px}.public-reference>p{margin:12px 0}.public-reference table{table-layout:fixed;white-space:normal;min-width:850px}.public-reference th:nth-child(1){width:23%}.public-reference th:nth-child(2){width:25%}.public-reference td{vertical-align:top;overflow-wrap:anywhere}.public-reference pre{max-height:300px;overflow:auto;white-space:pre-wrap}.public-reference th,.public-reference td{padding:16px}</style></head>`);
 assert.equal((reference.match(/<pre /g)||[]).length,16);
+// Keep the initial page focused on the host rollup; the reference remains available.
+html=html.replace('<section class="public-repo"><h1>phpdetect on GitHub</h1><p>Source code, Ansible playbooks, execution environment and deployment workflows.</p>', '<section class="public-repo"><b>phpdetect · Community proof of concept</b>')
+ .replace(/<p><a href="#manual-check-reference">Jump to all .*?<\/a><\/p>/, '')
+ .replace('<h1>Exposure overview</h1>','<h1>PHP detection by host</h1>')
+ .replace('Know where PHP runs. See what still needs attention.','Expand a host to inspect each detection check, its evidence and manual command.')
+ .replace(/<section class="metrics"[\s\S]*?<\/section>/,'')
+ .replace('<h2>Hosts &amp; runtimes</h2>','<h2>Hosts</h2>')
+ .replace('<h2>Hosts & runtimes</h2>','<h2>Hosts</h2>')
+ .replace('Internet-facing records are shown first.','One row per host. Use the + control to expand its detection checks.')
+ .replace('<th>HOST / RUNTIME</th><th>PHP / PACKAGE VERSION</th><th>PATCH STATUS</th><th>EXPOSURE</th><th>EVIDENCE</th>','<th>HOST / ADDRESS</th><th>HOST STATUS</th><th>RUNTIMES</th><th>OBSERVED VERSIONS</th><th>CHECK COVERAGE</th>')
+ .replace('<option value="patched">Patched runtime</option>','')
+ .replace(reference,'<details id="manual-check-reference" class="reference-disclosure"><summary>All checks and manual commands — reference</summary>'+reference.replace('id="manual-check-reference"','id="full-check-reference"')+'</details>')
+ .replace('</head>','<style>.public-repo{margin:16px 0;padding:12px 18px;display:flex;flex-wrap:wrap;align-items:center;gap:16px}.repo-url{font-size:17px;margin:0}.heading{margin:20px 0}.host-summary td{white-space:normal;overflow-wrap:anywhere}.host-summary td:first-child{min-width:210px}.host-check-cell{white-space:normal;background:#f7fafa;padding:24px}.host-check-table{table-layout:fixed;white-space:normal;min-width:800px}.host-check-table td{vertical-align:top;overflow-wrap:anywhere}.host-check-table th:nth-child(1){width:24%}.host-check-table th:nth-child(2){width:36%}.host-check-table pre{max-height:300px;overflow:auto}.host-check-table details{margin-top:12px}.host-check-table summary,.reference-disclosure>summary{cursor:pointer;color:var(--teal);font-weight:600}.reference-disclosure{margin:25px 0}.host-expand{font-size:14px;text-align:left}.host-check-cell>p{margin-bottom:15px}</style></head>');
 
+html=html.replace('<footer>','<div hidden><span id="hosts-count"></span><span id="affected-count"></span><span id="unknown-count"></span><span id="runtime-count"></span></div><footer>');
 let js=fs.readFileSync(path.join(dashboard,'app.js'),'utf8');
 js=js.replace('`AAP discovery${','`Demo snapshot${')
  .replace("source.status && source.status!=='successful'", "source.status && source.status!=='fictional sample' && source.status!=='successful'");
+const start=js.indexOf('function render(){');
+const end=js.indexOf('function renderVersions()',start);
+assert.ok(start>=0 && end>start);
+js=js.slice(0,start)+fs.readFileSync(path.join(__dirname,'host-view.js'),'utf8')+'\n'+js.slice(end);
 fs.writeFileSync(path.join(out,'app.js'),js);
 const version=require('node:crypto').createHash('sha256').update(js).digest('hex').slice(0,12);
 html=html.replace('src="app.js"','src="app.js?v='+version+'"');
